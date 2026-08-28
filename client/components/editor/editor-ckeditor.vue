@@ -22,6 +22,7 @@ import DecoupledEditor from '@requarks/ckeditor5'
 // import DecoupledEditor from '../../../../wiki-ckeditor5/build/ckeditor'
 import EditorConflict from './ckeditor/conflict.vue'
 import { html as beautify } from 'js-beautify/js/lib/beautifier.min.js'
+import Cookies from 'js-cookie'
 
 class WikiJsUploadAdapter {
   constructor (loader) {
@@ -95,6 +96,64 @@ export default {
     },
     insertLinkHandler ({ locale, path }) {
       this.editor.execute('link', siteLangs.length > 0 ? `/${locale}/${path}` : `/${path}`)
+    },
+    async uploadAndInsertFile (file) {
+      const jwtToken = Cookies.get('jwt')
+      const sanitized = file.name.toLowerCase().replace(/[\s,;#]+/g, '_')
+
+      const fd = new FormData()
+      fd.append('mediaUpload', file, file.name)
+      fd.append('mediaUpload', JSON.stringify({ folderId: 0 }))
+
+      this.$store.commit('showNotification', {
+        message: `업로드 중: ${file.name}`,
+        style: 'info',
+        icon: 'cloud_upload'
+      })
+
+      try {
+        const resp = await fetch('/u', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${jwtToken}` },
+          body: fd
+        })
+        if (!resp.ok) {
+          throw new Error(`Upload failed: ${resp.status}`)
+        }
+        const isImage = file.type.startsWith('image/')
+        this.$root.$emit('editorInsert', {
+          kind: isImage ? 'IMAGE' : 'BINARY',
+          path: `/${sanitized}`,
+          text: file.name,
+          align: ''
+        })
+        this.$store.commit('showNotification', {
+          message: `업로드 완료: ${file.name}`,
+          style: 'success',
+          icon: 'check'
+        })
+      } catch (err) {
+        this.$store.commit('showNotification', {
+          message: `업로드 실패: ${file.name}`,
+          style: 'error',
+          icon: 'error'
+        })
+      }
+    },
+    onEditorDragOver (e) {
+      if (e.dataTransfer.types.includes('Files')) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+      }
+    },
+    async onEditorDrop (e) {
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      for (const file of files) {
+        await this.uploadAndInsertFile(file)
+      }
     }
   },
   async mounted () {
@@ -126,6 +185,11 @@ export default {
       }
     })
     this.$refs.toolbarContainer.appendChild(this.editor.ui.view.toolbar.element)
+
+    // Drag & drop from local file system
+    const editableEl = this.editor.ui.view.editable.element
+    editableEl.addEventListener('dragover', this.onEditorDragOver)
+    editableEl.addEventListener('drop', this.onEditorDrop)
 
     if (this.mode !== 'create') {
       this.editor.setData(this.$store.get('editor/content'))
@@ -169,6 +233,9 @@ export default {
   },
   beforeDestroy () {
     if (this.editor) {
+      const editableEl = this.editor.ui.view.editable.element
+      editableEl.removeEventListener('dragover', this.onEditorDragOver)
+      editableEl.removeEventListener('drop', this.onEditorDrop)
       this.editor.destroy()
       this.editor = null
     }
