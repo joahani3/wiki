@@ -18,6 +18,37 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-29] feat: 나무위키 스타일 주석 기능 추가 (WYSIWYG 에디터)
+
+- **이유**: 본문에 각주/주석을 삽입하고 문서 하단에 모아서 보여주는 기능 요청
+- **위치**:
+  - `client/components/editor/editor-ckeditor.vue` : 주석 삽입 버튼 및 다이얼로그, 삽입 로직
+  - `client/themes/default/components/page.vue` : 뷰어 주석 파싱 및 렌더링
+- **내용**:
+  - 에디터 툴바 아래 "주석 삽입" 버튼 추가
+  - 다이얼로그에서 주석 내용 입력 (Ctrl+Enter 단축키 지원)
+  - 커서 위치에 `[N]` superscript 삽입, 문서 하단에 `── 주석 ──` 구분선 + `[N] 내용` 단락 자동 추가
+  - 뷰어에서 주석 단락을 파싱하여 하단에 "주석" 섹션으로 렌더링
+  - `[N]` 클릭 시 주석 섹션으로 스크롤, ↑ 클릭 시 본문으로 복귀
+
+### [2026-08-29] fix: 페이지 등록 정보 경로 섹션에서 언어 선택 제거
+
+- **이유**: 페이지 등록 정보 화면의 경로 입력 옆 언어(ko) 드롭다운이 불필요하여 제거 요청
+- **위치**: `client/components/editor/editor-modal-properties.vue`
+- **내용**: 언어 선택 `v-select` 제거, 경로 필드를 전체 너비로 변경, 섹션 제목 및 입력 레이블을 "경로/파일명"으로 변경
+
+### [2026-08-29] feat: 새 문서 생성 시 Visual Editor 자동 선택
+
+- **이유**: 새 문서 작성 시 편집기 선택 화면이 나타나는데, 항상 Visual Editor를 사용하므로 해당 화면 건너뛰기 요청
+- **위치**: `client/components/editor.vue`
+- **내용**: 새 문서 생성 모드에서 `dialogEditorSelector = true` 대신 `currentEditor = 'editorCkeditor'`로 직접 설정하여 편집기 선택 화면 생략
+
+### [2026-08-29] fix: 페이지 선택 목록 한 줄 표시, 파일명 우선 정렬, 언어선택 제거
+
+- **이유**: 페이지 선택기 목록에서 파일명과 문서제목이 혼재하여 가독성 저하, 언어(ko) 선택 UI 불필요
+- **위치**: `client/components/common/page-selector.vue`
+- **내용**: 목록 항목을 한 줄로 표시 (파일경로 flex:1 + 문서제목 flex:2), 컬럼 헤더(파일명/문서제목) 추가, 언어 선택 `v-select` 제거 후 "파일명" 레이블로 대체, 높이 376px 조정
+
 ### [2026-08-29] feat: 사이드바에 최근 생성/수정 문서 위젯 추가
 
 - **이유**: 모든 페이지 좌측 사이드바에서 최근 문서 히스토리를 바로 확인할 수 있도록 요청
@@ -67,8 +98,8 @@ Fork: https://github.com/joahani3/wiki
   - 기본 문서명 `new-page` → `새문서` 로 변경 (props 기본값 및 data 초기값 두 곳)
   - 입력창 하단에 폴더 생성 안내 문구 추가: "폴더 만들기: 문서명 앞에 /폴더명/ 을 입력하시면 해당 폴더가 만들어집니다."
 
-### [2026-08-28] fix: LDAP 로그인 시 사용자 이름 덮어쓰기 방지
+### [2026-08-28] fix: LDAP 로그인 시 사용자 이름 및 아바타 덮어쓰기 방지
 
-- **이유**: LDAP로 로그인할 때마다 LDAP의 displayName이 DB에 저장된 이름을 강제로 덮어써서, 관리자가 Wiki 내에서 이름을 수정해도 다음 로그인 시 원래대로 돌아오는 문제
-- **위치**: `server/models/users.js` 239번째 줄 (`processProfile` 함수)
-- **내용**: `name: displayName` → `name: user.name || displayName` 으로 변경. 기존에 저장된 이름이 있으면 유지하고, 없을 때(신규 가입)만 LDAP 값을 사용하도록 수정
+- **이유**: LDAP로 로그인할 때마다 LDAP의 displayName이 DB에 저장된 이름을 강제로 덮어써서, 관리자가 Wiki 내에서 이름을 수정해도 다음 로그인 시 원래대로 돌아오는 문제. 내부 아바타(`pictureUrl=internal`)도 LDAP 재로그인 시 덮어쓰이는 문제
+- **위치**: `server/models/users.js` (`processProfile` 함수)
+- **내용**: `name: displayName` → `name: user.name || displayName` 으로 변경. `pictureUrl: user.pictureUrl === 'internal' ? 'internal' : pictureUrl` 으로 내부 아바타 보호. 기존 이름/아바타가 있으면 유지하고, 없을 때(신규 가입)만 LDAP 값을 사용
