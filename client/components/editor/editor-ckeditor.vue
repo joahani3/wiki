@@ -16,11 +16,46 @@
 
 <script>
 import _ from 'lodash'
+import Cookies from 'js-cookie'
 import { get, sync } from 'vuex-pathify'
 import DecoupledEditor from '@requarks/ckeditor5'
 // import DecoupledEditor from '../../../../wiki-ckeditor5/build/ckeditor'
 import EditorConflict from './ckeditor/conflict.vue'
 import { html as beautify } from 'js-beautify/js/lib/beautifier.min.js'
+
+class WikiJsUploadAdapter {
+  constructor (loader) {
+    this.loader = loader
+  }
+
+  upload () {
+    return this.loader.file.then(file => new Promise((resolve, reject) => {
+      const jwtToken = Cookies.get('jwt')
+      const sanitizedName = file.name.toLowerCase().replace(/[\s,;#]+/g, '_')
+      const formData = new FormData()
+      formData.append('mediaUpload', file, sanitizedName)
+      formData.append('mediaUpload', JSON.stringify({ folderId: null }))
+
+      fetch('/u', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${jwtToken}` },
+        body: formData
+      }).then(res => {
+        if (res.ok) {
+          resolve({ default: `/${sanitizedName}` })
+        } else {
+          reject(new Error('Upload failed'))
+        }
+      }).catch(reject)
+    }))
+  }
+
+  abort () {}
+}
+
+function WikiJsUploadAdapterPlugin (editor) {
+  editor.plugins.get('FileRepository').createUploadAdapter = (loader) => new WikiJsUploadAdapter(loader)
+}
 
 /* global siteLangs */
 
@@ -69,6 +104,7 @@ export default {
       language: this.locale,
       placeholder: 'Type the page content here',
       disableNativeSpellChecker: false,
+      extraPlugins: [WikiJsUploadAdapterPlugin],
       // TODO: Mention autocomplete
       //
       // mention: {
