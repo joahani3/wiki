@@ -47,8 +47,8 @@
           v-toolbar(color='blue darken-2', dark, dense, flat)
             .body-2 {{$t('common:pageSelector.pages')}}
           v-sheet.d-flex.px-3.py-1(color='blue darken-3')
-            .caption.white--text.font-weight-bold(style='flex:1') 문서제목
             .caption.white--text.font-weight-bold(style='flex:1') 파일명
+            .caption.white--text.font-weight-bold(style='flex:2') 문서제목
           div(v-if='currentPages.length > 0', style='height:376px;')
             vue-scroll(:ops='scrollStyle')
               v-list.py-0(dense)
@@ -59,9 +59,9 @@
                   template(v-for='(page, idx) of currentPages')
                     v-list-item(:key='`page-` + page.id', :value='page')
                       v-list-item-icon: v-icon mdi-text-box
-                      v-list-item-content
-                        v-list-item-title {{page.title}}
-                        v-list-item-subtitle.caption /{{page.path}}
+                      v-list-item-content.d-flex.align-center.py-1(style='gap:0')
+                        span.caption(style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap') /{{page.path}}
+                        span.body-2(style='flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:8px') {{page.title}}
                     v-divider(v-if='idx < pages.length - 1')
           v-alert.animated.fadeIn(
             v-else
@@ -72,17 +72,8 @@
             )
             .body-2 {{$t('common:pageSelector.folderEmptyWarning')}}
       v-card-actions.grey.pa-2(:class='$vuetify.theme.dark ? `darken-2` : `lighten-1`', v-if='!mustExist')
-        v-select(
-          solo
-          dark
-          flat
-          background-color='grey darken-3-d2'
-          hide-details
-          single-line
-          :items='namespaces'
-          style='flex: 0 0 100px; border-radius: 4px 0 0 4px;'
-          v-model='currentLocale'
-          )
+        v-sheet.d-flex.align-center.px-3(color='grey darken-3', dark, style='border-radius:4px 0 0 4px; height:48px; flex:0 0 80px;')
+          span.white--text.body-2 파일명
         v-text-field(
           ref='pathIpt'
           solo
