@@ -18,6 +18,18 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-29] feat: 사용자 프로필 아이콘 업로드 기능 추가
+
+- **이유**: 사용자가 본인 아이콘을 직접 업로드하여 글작성자/댓글/헤더 등에 표시되도록 기능 요청
+- **위치**:
+  - `server/controllers/common.js` : POST `/_userav` (업로드), DELETE `/_userav` (삭제) 엔드포인트 추가
+  - `client/components/profile/profile.vue` : 아이콘 업로드/삭제 UI 추가, 미리보기 표시
+  - `client/components/comments.vue` : 댓글 작성자 아바타 이미지 표시 (없으면 이니셜 fallback)
+- **내용**:
+  - 이미지 업로드 시 `userAvatars` 테이블에 바이너리 저장, `pictureUrl = 'internal'` 설정 후 JWT 갱신
+  - `/_userav/:uid` 엔드포인트로 아바타 서빙 (기존 인프라 활용)
+  - 헤더 아바타는 기존 `internal` 처리 로직 활용으로 자동 반영
+
 ### [2026-08-29] feat: 위지윅 편집기 이미지 붙여넣기(paste) 지원
 
 - **이유**: HWP 등에서 복사 후 붙여넣기 시 이미지가 편집기에 삽입되지 않는 문제

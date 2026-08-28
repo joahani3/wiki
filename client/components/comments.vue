@@ -78,8 +78,8 @@
         )
         template(v-slot:icon)
           v-avatar(color='blue-grey')
-            //- v-img(src='http://i.pravatar.cc/64')
-            span.white--text.title {{cm.initials}}
+            v-img(v-if='cm.authorId', :src='`/_userav/${cm.authorId}`', :alt='cm.authorName', @error='cm.avatarError = true', v-show='!cm.avatarError')
+            span.white--text.title(v-if='!cm.authorId || cm.avatarError') {{cm.initials}}
         v-card.elevation-1
           v-card-text
             .comments-post-actions(v-if='permissions.manage && !isBusy && commentEditId === 0')
@@ -182,6 +182,7 @@ export default {
                 list(locale: $locale, path: $path) {
                   id
                   render
+                  authorId
                   authorName
                   createdAt
                   updatedAt
@@ -202,6 +203,7 @@ export default {
             initials += _.last(nameParts).charAt(0)
           }
           c.initials = initials
+          c.avatarError = false
           return c
         })
       } catch (err) {

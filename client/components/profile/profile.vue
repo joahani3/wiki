@@ -169,17 +169,22 @@
               v-icon(left) mdi-progress-check
               span {{$t('profile:auth.changePassword')}}
       v-flex(lg6 xs12)
-        //- v-card
-        //-   v-toolbar(color='blue-grey', dark, dense, flat)
-        //-     v-toolbar-title
-        //-       .subtitle-1 Picture
-        //-   v-card-title
-        //-     v-avatar.blue(v-if='picture.kind === `initials`', :size='40')
-        //-       span.white--text.subheading {{picture.initials}}
-        //-     v-avatar(v-else-if='picture.kind === `image`', :size='40')
-        //-       v-img(:src='picture.url')
-        //-     v-btn(outlined).mx-4 Upload Picture
-        //-     v-btn(outlined, disabled) Remove Picture
+        v-card.animated.fadeInUp.mb-3
+          v-toolbar(color='blue-grey', dark, dense, flat)
+            v-toolbar-title.subtitle-1 프로필 아이콘
+          v-card-text.d-flex.align-center
+            v-avatar.mr-4(:size='72', :color='picture.kind === `initials` ? `blue-grey` : ``')
+              v-img(v-if='picture.kind === `image`', :src='picture.url', :key='avatarRefreshKey')
+              span.white--text.display-1(v-else) {{picture.initials}}
+            div
+              .body-2.mb-2 JPG / PNG / GIF · 최대 1MB
+              v-btn(depressed, color='blue-grey', dark, small, @click='$refs.avatarInput.click()', :loading='avatarLoading')
+                v-icon(left) mdi-upload
+                span 아이콘 업로드
+              v-btn.ml-2(depressed, small, color='red', dark, v-if='picture.kind === `image`', @click='removeAvatar', :loading='avatarLoading')
+                v-icon(left) mdi-delete
+                span 삭제
+              input(ref='avatarInput', type='file', accept='image/*', style='display:none', @change='uploadAvatar')
         v-card.animated.fadeInUp.wait-p2s
           v-toolbar(color='blue-grey', dark, dense, flat)
             v-toolbar-title.subtitle-1 {{$t('profile:preferences')}}
@@ -366,6 +371,8 @@ export default {
     return {
       saveLoading: false,
       changePassLoading: false,
+      avatarLoading: false,
+      avatarRefreshKey: 0,
       user: {
         name: 'unknown',
         location: '',
@@ -665,11 +672,12 @@ export default {
       return _.get(_.find(this.appearances, ['value', this.user.appearance]), 'text', false) || this.$t('profile:appearanceDefault')
     },
     pictureUrl: get('user/pictureUrl'),
+    userId: get('user/id'),
     picture () {
       if (this.pictureUrl && this.pictureUrl.length > 1) {
         return {
           kind: 'image',
-          url: this.pictureUrl
+          url: this.pictureUrl === 'internal' ? `/_userav/${this.userId}?${this.avatarRefreshKey}` : this.pictureUrl
         }
       } else {
         const nameParts = this.user.name.toUpperCase().split(' ')
@@ -712,6 +720,48 @@ export default {
     }
   },
   methods: {
+    async uploadAvatar (e) {
+      const file = e.target.files[0]
+      if (!file) return
+      this.avatarLoading = true
+      try {
+        const fd = new FormData()
+        fd.append('avatar', file)
+        const resp = await fetch('/_userav', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${Cookies.get('jwt')}` },
+          body: fd
+        })
+        const result = await resp.json()
+        if (!result.succeeded) throw new Error(result.message)
+        Cookies.set('jwt', result.token, { expires: 365 })
+        this.$store.set('user/pictureUrl', 'internal')
+        this.avatarRefreshKey++
+        this.$store.commit('showNotification', { message: '아이콘이 업로드됐습니다.', style: 'success', icon: 'check' })
+      } catch (err) {
+        this.$store.commit('showNotification', { message: `업로드 실패: ${err.message}`, style: 'error', icon: 'error' })
+      }
+      this.avatarLoading = false
+      this.$refs.avatarInput.value = ''
+    },
+    async removeAvatar () {
+      this.avatarLoading = true
+      try {
+        const resp = await fetch('/_userav', {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${Cookies.get('jwt')}` }
+        })
+        const result = await resp.json()
+        if (!result.succeeded) throw new Error(result.message)
+        Cookies.set('jwt', result.token, { expires: 365 })
+        this.$store.set('user/pictureUrl', '')
+        this.avatarRefreshKey++
+        this.$store.commit('showNotification', { message: '아이콘이 삭제됐습니다.', style: 'success', icon: 'check' })
+      } catch (err) {
+        this.$store.commit('showNotification', { message: `삭제 실패: ${err.message}`, style: 'error', icon: 'error' })
+      }
+      this.avatarLoading = false
+    },
     /**
      * Focus an input after delay
      */

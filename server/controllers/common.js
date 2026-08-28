@@ -5,6 +5,7 @@ const _ = require('lodash')
 const CleanCSS = require('clean-css')
 const moment = require('moment')
 const qs = require('querystring')
+const multer = require('multer')
 
 /* global WIKI */
 
@@ -405,10 +406,54 @@ router.get('/_userav/:uid', async (req, res, next) => {
   const av = await WIKI.models.users.getUserAvatarData(req.params.uid)
   if (av) {
     res.set('Content-Type', 'image/jpeg')
-    res.send(av)
+    return res.send(av)
   }
 
   return res.sendStatus(404)
+})
+
+/**
+ * Upload User Avatar
+ */
+router.post('/_userav', (req, res, next) => {
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 } }).single('avatar')(req, res, next)
+}, async (req, res, next) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ succeeded: false, message: 'Unauthorized' })
+  }
+  if (!req.file) {
+    return res.status(400).json({ succeeded: false, message: 'No file uploaded.' })
+  }
+  if (!req.file.mimetype.startsWith('image/')) {
+    return res.status(400).json({ succeeded: false, message: 'Only image files are allowed.' })
+  }
+  try {
+    await WIKI.models.users.updateUserAvatarData(req.user.id, req.file.buffer)
+    await WIKI.models.users.query().patch({ pictureUrl: 'internal' }).where('id', req.user.id)
+    const usr = await WIKI.models.users.query().findById(req.user.id)
+    const newToken = await WIKI.models.users.refreshToken(usr)
+    return res.json({ succeeded: true, token: newToken.token })
+  } catch (err) {
+    return res.status(500).json({ succeeded: false, message: err.message })
+  }
+})
+
+/**
+ * Remove User Avatar
+ */
+router.delete('/_userav', async (req, res, next) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ succeeded: false, message: 'Unauthorized' })
+  }
+  try {
+    await WIKI.models.knex('userAvatars').where('id', req.user.id).delete()
+    await WIKI.models.users.query().patch({ pictureUrl: '' }).where('id', req.user.id)
+    const usr = await WIKI.models.users.query().findById(req.user.id)
+    const newToken = await WIKI.models.users.refreshToken(usr)
+    return res.json({ succeeded: true, token: newToken.token })
+  } catch (err) {
+    return res.status(500).json({ succeeded: false, message: err.message })
+  }
 })
 
 /**
