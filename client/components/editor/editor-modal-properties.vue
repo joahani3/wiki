@@ -43,22 +43,13 @@
               )
           v-divider
           v-card-text.grey.pt-5(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
-            .overline.pb-5 {{$t('editor:props.path')}}
+            .overline.pb-5 경로/파일명
             v-container.pa-0(fluid, grid-list-lg)
               v-layout(row, wrap)
-                v-flex(xs12, md2)
-                  v-select(
-                    outlined
-                    :label='$t(`editor:props.locale`)'
-                    suffix='/'
-                    :items='namespaces'
-                    v-model='locale'
-                    hide-details
-                  )
-                v-flex(xs12, md10)
+                v-flex(xs12)
                   v-text-field(
                     outlined
-                    :label='$t(`editor:props.path`)'
+                    label='경로/파일명'
                     append-icon='mdi-folder-search'
                     v-model='path'
                     :hint='$t(`editor:props.pathHint`)'
