@@ -154,6 +154,19 @@ export default {
       for (const file of files) {
         await this.uploadAndInsertFile(file)
       }
+    },
+    async onEditorPaste (e) {
+      const items = Array.from(e.clipboardData.items || [])
+      const imageItems = items.filter(item => item.type.startsWith('image/'))
+      if (imageItems.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      for (const item of imageItems) {
+        const file = item.getAsFile()
+        if (file) {
+          await this.uploadAndInsertFile(file)
+        }
+      }
     }
   },
   async mounted () {
@@ -186,10 +199,11 @@ export default {
     })
     this.$refs.toolbarContainer.appendChild(this.editor.ui.view.toolbar.element)
 
-    // Drag & drop from local file system
+    // Drag & drop / paste from local file system
     const editableEl = this.editor.ui.view.editable.element
     editableEl.addEventListener('dragover', this.onEditorDragOver)
     editableEl.addEventListener('drop', this.onEditorDrop)
+    editableEl.addEventListener('paste', this.onEditorPaste)
 
     if (this.mode !== 'create') {
       this.editor.setData(this.$store.get('editor/content'))
@@ -236,6 +250,7 @@ export default {
       const editableEl = this.editor.ui.view.editable.element
       editableEl.removeEventListener('dragover', this.onEditorDragOver)
       editableEl.removeEventListener('drop', this.onEditorDrop)
+      editableEl.removeEventListener('paste', this.onEditorPaste)
       this.editor.destroy()
       this.editor = null
     }

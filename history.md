@@ -18,6 +18,12 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-29] feat: 위지윅 편집기 이미지 붙여넣기(paste) 지원
+
+- **이유**: HWP 등에서 복사 후 붙여넣기 시 이미지가 편집기에 삽입되지 않는 문제
+- **위치**: `client/components/editor/editor-ckeditor.vue`
+- **내용**: paste 이벤트에서 clipboard items 중 이미지(image/*)만 가로채어 서버 업로드 후 커서 위치에 삽입. 텍스트/HTML 붙여넣기는 그대로 CKEditor 기본 동작 유지
+
 ### [2026-08-29] feat: 페이지 선택 다이얼로그 목록에 파일명/문서제목 구분 표시
 
 - **이유**: 페이지 목록에 문서제목만 보여 파일명을 알 수 없어 혼동 발생
