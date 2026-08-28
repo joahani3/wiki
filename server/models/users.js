@@ -234,7 +234,16 @@ module.exports = class User extends Model {
         throw new Error('This is a system reserved account and cannot be used.')
       }
 
-      // Skip profile update on subsequent logins — only update on first login (creation)
+      user = await user.$query().patchAndFetch({
+        email: primaryEmail,
+        name: user.name || displayName,
+        pictureUrl: user.pictureUrl === 'internal' ? 'internal' : pictureUrl
+      })
+
+      if (pictureUrl === 'internal' && user.pictureUrl !== 'internal') {
+        await WIKI.models.users.updateUserAvatarData(user.id, profile.picture)
+      }
+
       return user
     }
 
