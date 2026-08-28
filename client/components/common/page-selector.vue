@@ -91,6 +91,8 @@
           clearable
           style='border-radius: 0 4px 4px 0;'
         )
+      v-card-text.caption.grey--text.py-1
+        | 폴더 만들기: 문서명 앞에 /폴더명/ 을 입력하시면 해당 폴더가 만들어집니다.
       v-card-chin
         v-spacer
         v-btn(text, @click='close') {{$t('common:actions.cancel')}}
@@ -115,7 +117,7 @@ export default {
     },
     path: {
       type: String,
-      default: 'new-page'
+      default: '새문서'
     },
     locale: {
       type: String,
@@ -140,7 +142,7 @@ export default {
       searchLoading: false,
       currentLocale: siteConfig.lang,
       currentFolderPath: '',
-      currentPath: 'new-page',
+      currentPath: '새문서',
       currentPage: null,
       currentNode: [0],
       openNodes: [0],
