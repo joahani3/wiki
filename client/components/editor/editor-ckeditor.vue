@@ -22,7 +22,6 @@ import DecoupledEditor from '@requarks/ckeditor5'
 // import DecoupledEditor from '../../../../wiki-ckeditor5/build/ckeditor'
 import EditorConflict from './ckeditor/conflict.vue'
 import { html as beautify } from 'js-beautify/js/lib/beautifier.min.js'
-import Cookies from 'js-cookie'
 
 class WikiJsUploadAdapter {
   constructor (loader) {
