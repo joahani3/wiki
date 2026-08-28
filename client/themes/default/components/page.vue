@@ -685,10 +685,85 @@ export default {
         }
       })
 
+      this.processFootnotes()
+
       window.boot.notify('page-ready')
     })
   },
   methods: {
+    processFootnotes () {
+      const container = this.$refs.container
+      if (!container) return
+
+      // Find superscript footnote refs: <sup>[N]</sup>
+      const supEls = [...container.querySelectorAll('sup')]
+        .filter(el => /^\[\d+\]$/.test(el.textContent.trim()))
+      if (supEls.length === 0) return
+
+      // Find footnote content paragraphs: paragraphs starting with [N]
+      const allParas = [...container.querySelectorAll('p')]
+      const fnMap = {}
+      allParas.forEach(p => {
+        const m = p.textContent.trim().match(/^\[(\d+)\]\s*([\s\S]+)/)
+        if (m) fnMap[m[1]] = { el: p, content: m[2] }
+      })
+      if (Object.keys(fnMap).length === 0) return
+
+      // Hide separator and footnote paragraphs
+      allParas.forEach(p => {
+        if (/^──\s*주석\s*──/.test(p.textContent.trim())) p.style.display = 'none'
+      })
+      Object.values(fnMap).forEach(({ el }) => { el.style.display = 'none' })
+
+      // Make superscript refs clickable
+      supEls.forEach(el => {
+        const m = el.textContent.trim().match(/^\[(\d+)\]$/)
+        if (!m || !fnMap[m[1]]) return
+        const n = m[1]
+        el.id = `fn-ref-${n}`
+        el.setAttribute('title', fnMap[n].content)
+        el.classList.add('wiki-fn-ref')
+        el.addEventListener('click', () => {
+          const target = container.querySelector(`#fn-${n}`)
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        })
+      })
+
+      // Build footnotes section
+      const section = document.createElement('div')
+      section.className = 'wiki-fn-section'
+
+      const title = document.createElement('div')
+      title.className = 'wiki-fn-section-title'
+      title.textContent = '주석'
+      section.appendChild(title)
+
+      const ol = document.createElement('ol')
+      ol.className = 'wiki-fn-list'
+      Object.entries(fnMap)
+        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+        .forEach(([n, { content }]) => {
+          const li = document.createElement('li')
+          li.id = `fn-${n}`
+          li.className = 'wiki-fn-item'
+
+          const back = document.createElement('a')
+          back.href = `#fn-ref-${n}`
+          back.className = 'wiki-fn-back'
+          back.textContent = '↑'
+          back.addEventListener('click', ev => {
+            ev.preventDefault()
+            const ref = container.querySelector(`#fn-ref-${n}`)
+            if (ref) ref.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          })
+
+          li.appendChild(back)
+          li.appendChild(document.createTextNode(` ${content}`))
+          ol.appendChild(li)
+        })
+      section.appendChild(ol)
+      container.appendChild(section)
+    },
     async fetchRecentPages () {
       try {
         const RECENT_QUERY = gql`
@@ -807,6 +882,62 @@ export default {
 
 .page-col-sd::-webkit-scrollbar {
   display: none;
+}
+
+.wiki-fn-ref {
+  cursor: pointer;
+  color: #1565c0;
+  font-weight: bold;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.wiki-fn-section {
+  margin-top: 32px;
+  padding-top: 14px;
+  border-top: 2px solid #e0e0e0;
+
+  .wiki-fn-section-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #9e9e9e;
+    margin-bottom: 6px;
+  }
+
+  .wiki-fn-list {
+    margin: 0;
+    padding-left: 28px;
+
+    .wiki-fn-item {
+      font-size: 0.85rem;
+      color: #616161;
+      line-height: 1.6;
+      margin-bottom: 2px;
+    }
+
+    .wiki-fn-back {
+      font-size: 0.8rem;
+      color: #1565c0;
+      text-decoration: none;
+      margin-right: 4px;
+
+      &:hover { text-decoration: underline; }
+    }
+  }
+}
+
+.theme--dark {
+  .wiki-fn-ref { color: #90caf9; }
+  .wiki-fn-section {
+    border-top-color: #444;
+    .wiki-fn-section-title { color: #757575; }
+    .wiki-fn-item { color: #aaa; }
+    .wiki-fn-back { color: #90caf9; }
+  }
 }
 
 .page-header-section {

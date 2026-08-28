@@ -1,6 +1,10 @@
 <template lang='pug'>
   .editor-ckeditor
     div(ref='toolbarContainer')
+    .editor-fn-bar
+      v-btn(x-small, text, color='grey darken-1', @click='openFootnoteDialog')
+        v-icon(x-small, left) mdi-comment-plus-outline
+        | 주석 삽입
     div.contents(ref='editor')
     v-system-bar.editor-ckeditor-sysbar(dark, status, color='grey darken-3')
       .caption.editor-ckeditor-sysbar-locale {{locale.toUpperCase()}}
@@ -12,6 +16,27 @@
         .caption {{$t('editor:ckeditor.stats', { chars: stats.characters, words: stats.words })}}
     editor-conflict(v-model='isConflict', v-if='isConflict')
     page-selector(mode='select', v-model='insertLinkDialog', :open-handler='insertLinkHandler', :path='path', :locale='locale')
+    v-dialog(v-model='footnoteDialog', max-width='500px', eager)
+      v-card
+        v-card-title.text-subtitle-1 주석 내용 입력
+        v-card-text.pt-2
+          v-textarea(
+            v-model='footnoteText'
+            outlined
+            label='주석 내용'
+            rows='3'
+            auto-grow
+            autofocus
+            hide-details
+            @keydown.ctrl.enter='insertFootnote'
+          )
+          .caption.mt-1.grey--text Ctrl+Enter 로 삽입
+        v-card-actions
+          v-spacer
+          v-btn(text, @click='footnoteDialog = false') 취소
+          v-btn(color='primary', depressed, @click='insertFootnote')
+            v-icon(left, small) mdi-check
+            | 삽입
 </template>
 
 <script>
@@ -78,7 +103,9 @@ export default {
       },
       content: '',
       isConflict: false,
-      insertLinkDialog: false
+      insertLinkDialog: false,
+      footnoteDialog: false,
+      footnoteText: ''
     }
   },
   computed: {
@@ -92,6 +119,43 @@ export default {
   methods: {
     insertLink () {
       this.insertLinkDialog = true
+    },
+    openFootnoteDialog () {
+      this.footnoteText = ''
+      this.footnoteDialog = true
+    },
+    insertFootnote () {
+      const content = this.footnoteText.trim()
+      if (!content || !this.editor) return
+
+      // Determine next footnote number
+      const html = this.editor.getData()
+      const supMatches = [...html.matchAll(/<sup>\[(\d+)\]<\/sup>/g)]
+      const nums = supMatches.map(m => parseInt(m[1]))
+      const n = nums.length > 0 ? Math.max(...nums) + 1 : 1
+
+      this.editor.model.change(writer => {
+        // Insert [N] superscript at cursor position
+        const position = this.editor.model.document.selection.getFirstPosition()
+        writer.insertText(`[${n}]`, { superscript: true }, position)
+
+        const root = this.editor.model.document.getRoot()
+
+        // First footnote: add separator paragraph
+        if (n === 1) {
+          const sep = writer.createElement('paragraph')
+          writer.insert(sep, writer.createPositionAt(root, 'end'))
+          writer.insertText('── 주석 ──', writer.createPositionAt(sep, 0))
+        }
+
+        // Add footnote content paragraph at document end
+        const fnPara = writer.createElement('paragraph')
+        writer.insert(fnPara, writer.createPositionAt(root, 'end'))
+        writer.insertText(`[${n}] ${content}`, writer.createPositionAt(fnPara, 0))
+      })
+
+      this.footnoteDialog = false
+      this.footnoteText = ''
     },
     insertLinkHandler ({ locale, path }) {
       this.editor.execute('link', siteLangs.length > 0 ? `/${locale}/${path}` : `/${path}`)
@@ -302,6 +366,17 @@ $editor-height-mobile: calc(100vh - 56px - 16px);
       background-color: unset;
       color: unset;
       padding: .15em;
+    }
+  }
+
+  &-fn-bar {
+    background-color: #efefef;
+    border-bottom: 1px solid #ddd;
+    padding: 2px 8px;
+
+    @at-root .theme--dark & {
+      background-color: mc('grey', '850');
+      border-bottom-color: mc('grey', '700');
     }
   }
 
