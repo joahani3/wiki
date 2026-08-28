@@ -46,10 +46,10 @@
         v-flex(xs7)
           v-toolbar(color='blue darken-2', dark, dense, flat)
             .body-2 {{$t('common:pageSelector.pages')}}
-            //- v-spacer
-            //- v-btn(icon, tile, disabled): v-icon mdi-content-save-move-outline
-            //- v-btn(icon, tile, disabled): v-icon mdi-trash-can-outline
-          div(v-if='currentPages.length > 0', style='height:400px;')
+          v-sheet.d-flex.px-3.py-1(color='blue darken-3')
+            .caption.white--text.font-weight-bold(style='flex:1') 문서제목
+            .caption.white--text.font-weight-bold(style='flex:1') 파일명
+          div(v-if='currentPages.length > 0', style='height:376px;')
             vue-scroll(:ops='scrollStyle')
               v-list.py-0(dense)
                 v-list-item-group(
@@ -59,7 +59,9 @@
                   template(v-for='(page, idx) of currentPages')
                     v-list-item(:key='`page-` + page.id', :value='page')
                       v-list-item-icon: v-icon mdi-text-box
-                      v-list-item-title {{page.title}}
+                      v-list-item-content
+                        v-list-item-title {{page.title}}
+                        v-list-item-subtitle.caption /{{page.path}}
                     v-divider(v-if='idx < pages.length - 1')
           v-alert.animated.fadeIn(
             v-else
