@@ -7,16 +7,23 @@ RUN apk add yarn g++ make cmake python3 --no-cache
 
 WORKDIR /wiki
 
+# 의존성 관련 파일만 먼저 복사한다. package.json/yarn.lock/patches가 그대로면
+# 소스 코드만 바뀐 빌드에서도 이 레이어들이 Docker 캐시로 재사용되어
+# 매번 전체 yarn install(패키지 재다운로드/네이티브 빌드)을 다시 하지 않는다.
+COPY ./package.json ./package.json
+COPY ./yarn.lock ./yarn.lock
+COPY ./patches ./patches
+
+RUN yarn cache clean
+RUN yarn --frozen-lockfile --non-interactive
+
+# 소스 코드는 의존성 설치 이후에 복사 -> 위 install 레이어 캐시가 깨지지 않음
 COPY ./client ./client
 COPY ./dev ./dev
-COPY ./patches ./patches
-COPY ./package.json ./package.json
 COPY ./.babelrc ./.babelrc
 COPY ./.eslintignore ./.eslintignore
 COPY ./.eslintrc.yml ./.eslintrc.yml
 
-RUN yarn cache clean
-RUN yarn --frozen-lockfile --non-interactive
 RUN yarn build
 RUN rm -rf /wiki/node_modules
 RUN yarn --production --frozen-lockfile --non-interactive
