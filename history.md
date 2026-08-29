@@ -18,6 +18,37 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-29] feat: 사이드바 최근 문서 위젯에 "more..." 더보기 페이지 추가, 최근 댓글 문서 위젯 신설
+
+- **이유**: 사이드바 "최근 생성된 문서"/"최근 수정된 문서"가 5개까지만 보여서 전체 목록을 볼 방법이 없었음. "최근 댓글 문서" 위젯도 요청됨
+- **위치**:
+  - `server/graph/schemas/comment.graphql`, `server/graph/resolvers/comment.js` : `comments.recentPages` 쿼리 신설 (댓글 테이블을 pageId로 그룹핑해 최신 댓글순 정렬)
+  - `server/controllers/common.js`, `server/views/recent.pug` : `/r`, `/r/*` 라우트 및 뷰 신설
+  - `client/components/recent-pages.vue` : 새 "문서 목록" 페이지 (생성/수정/댓글 탭 전환, `?type=` 쿼리로 상태 유지)
+  - `client/graph/common/common-comments-query-recent.gql` : recentPages 쿼리 정의
+  - `client/client-app.js` : `RecentPages` 컴포넌트 전역 등록
+  - `client/themes/default/components/page.vue` : 최근 생성/수정 패널에 "more..." 링크 추가, "최근 댓글 문서" 패널 신설 및 `fetchRecentPages`에서 댓글 조회 추가 (문서 조회 권한과 별도 try/catch로 분리해 한쪽 권한이 없어도 다른 위젯이 안 깨지게 함)
+- **내용**: 각 사이드바 패널 하단에 "more..." 항목을 추가해 `/r?type=created|updated|commented`로 이동. 새 페이지는 최대 100개까지 불러와 클라이언트 사이드 페이지네이션(`v-data-iterator`)으로 표시
+
+### [2026-08-29] perf: Docker 빌드 시 소스만 바뀌어도 yarn install 재실행되지 않도록 레이어 순서 조정
+
+- **이유**: 재배포 시 소스 파일 하나만 바뀌어도 yarn install 전체가 매번 다시 실행돼 빌드가 느렸음. "변경된 것만 처리되게 해달라"는 요청에 따라 원인을 찾아 수정
+- **위치**: `dev/build/Dockerfile`
+- **내용**: assets 스테이지에서 COPY 순서를 package.json/yarn.lock/patches → yarn install → client/dev 등 소스 코드 순으로 재배치하여, 의존성이 그대로면 install 레이어가 Docker 캐시로 재사용되게 함. 누락돼 있던 yarn.lock COPY도 추가해 `--frozen-lockfile`이 실제 lock 파일을 참조하도록 수정
+
+### [2026-08-29] fix: 각주 버튼 라벨/위치 변경, 본문 각주 클릭 시 팝업 레이어 추가, DEVELOPMENT VERSION 배너 제거
+
+- **이유**: 각주 버튼 명칭('주석 삽입')과 위치(툴바 맨 끝)가 요구와 맞지 않았고, 본문에서 각주 번호 클릭 시 페이지 하단으로 스크롤되는 방식이 불편해 팝업으로 바로 내용을 확인하고 싶다는 요청. 배포 이미지에 DEVELOPMENT VERSION 배너가 노출되는 문제도 함께 해결
+- **위치**:
+  - `client/components/editor/editor-ckeditor.vue` : 각주 버튼 라벨/위치
+  - `client/themes/default/components/page.vue` : 각주 섹션 제목, 팝업 레이어
+  - `dev/build/Dockerfile` : DEVELOPMENT VERSION 배너 제거 (dev:false 패치)
+- **내용**:
+  - 에디터 툴바의 각주 버튼 라벨을 '주석 삽입' → '각주' + 위첨자 asterisk 아이콘으로 변경, componentFactory로 todoList/specialCharacters 버튼을 찾아 그 사이(구분선-각주-구분선)로 위치 이동
+  - 뷰어 하단 각주 섹션 제목을 '주석' → '각주'로 변경 (기존 '── 주석 ──' 구분선도 정규식으로 계속 인식하여 하위호환 유지)
+  - 본문 각주 번호 클릭 시 스크롤 대신 드래그 가능한 v-card 팝업(수정/닫기 버튼 포함)을 열도록 openFootnotePopup/startFootnoteDrag/footnoteEdit 메서드 추가
+  - 릴리즈 이미지 빌드 단계에서 package.json의 `"dev": true`를 sed로 false로 패치해 DEVELOPMENT VERSION 배너 억제
+
 ### [2026-08-29] feat: 나무위키 스타일 주석 기능 추가 (WYSIWYG 에디터)
 
 - **이유**: 본문에 각주/주석을 삽입하고 문서 하단에 모아서 보여주는 기능 요청

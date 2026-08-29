@@ -397,6 +397,14 @@ router.get(['/t', '/t/*'], (req, res, next) => {
 })
 
 /**
+ * Recent Pages (created / updated / commented)
+ */
+router.get(['/r', '/r/*'], (req, res, next) => {
+  _.set(res.locals, 'pageMeta.title', 'Recent')
+  res.render('recent')
+})
+
+/**
  * User Avatar
  */
 router.get('/_userav/:uid', async (req, res, next) => {

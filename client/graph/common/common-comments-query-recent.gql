@@ -1,0 +1,12 @@
+query ($limit: Int) {
+  comments {
+    recentPages(limit: $limit) {
+      id
+      locale
+      path
+      title
+      lastCommentAt
+      commentCount
+    }
+  }
+}

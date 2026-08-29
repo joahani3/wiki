@@ -25,6 +25,11 @@ type CommentQuery {
   single(
     id: Int!
   ): CommentPost @auth(requires: ["read:comments", "manage:system"])
+
+  # 사이드바/전체 목록 페이지의 "최근 댓글 문서" 위젯용 - 전체 문서에서 댓글이 최근 달린 순으로 조회
+  recentPages(
+    limit: Int
+  ): [RecentCommentedPage]! @auth(requires: ["read:comments", "manage:system"])
 }
 
 # -----------------------------------------------
@@ -95,4 +100,13 @@ type CommentCreateResponse {
 type CommentUpdateResponse {
   responseResult: ResponseStatus
   render: String
+}
+
+type RecentCommentedPage {
+  id: Int!
+  path: String!
+  locale: String!
+  title: String
+  lastCommentAt: Date!
+  commentCount: Int!
 }

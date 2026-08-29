@@ -93,6 +93,38 @@ module.exports = {
         WIKI.logger.warn(`Comment #${cm.id} is linked to a page #${cm.pageId} that doesn't exist! [ERROR]`)
         throw new WIKI.Error.CommentGenericError()
       }
+    },
+    /**
+     * Fetch pages ordered by most recent comment activity
+     */
+    async recentPages (obj, args, context) {
+      const limit = args.limit || 5
+      const activity = await WIKI.models.comments.query()
+        .select('pageId')
+        .max('createdAt as lastCommentAt')
+        .count('id as commentCount')
+        .groupBy('pageId')
+        .orderBy('lastCommentAt', 'desc')
+        .limit(limit)
+
+      const pageIds = activity.map(a => a.pageId)
+      if (pageIds.length < 1) {
+        return []
+      }
+
+      const pages = await WIKI.models.pages.query().select('id', 'path', { locale: 'localeCode' }, 'title').whereIn('id', pageIds)
+
+      return activity.reduce((result, a) => {
+        const page = pages.find(p => p.id === a.pageId)
+        if (page) {
+          result.push({
+            ...page,
+            lastCommentAt: a.lastCommentAt,
+            commentCount: _.toSafeInteger(a.commentCount)
+          })
+        }
+        return result
+      }, [])
     }
   },
   CommentMutation: {

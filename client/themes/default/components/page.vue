@@ -220,7 +220,7 @@
                 .page-author-card-name.body-2.grey--text(:class='$vuetify.theme.dark ? `` : `text--darken-3`') {{ authorName }}
                 .page-author-card-date.caption.grey--text.text--darken-1 {{ updatedAt | moment('calendar') }}
 
-            v-card.mb-5(v-if='recentCreated.length > 0 || recentUpdated.length > 0')
+            v-card.mb-5(v-if='recentCreated.length > 0 || recentUpdated.length > 0 || recentCommented.length > 0')
               v-expansion-panels(v-model='recentPanels', multiple, flat, accordion)
                 v-expansion-panel
                   v-expansion-panel-header.overline.indigo--text.px-4.py-2(:class='$vuetify.theme.dark ? `text--lighten-3` : ``', style='min-height:36px')
@@ -236,6 +236,9 @@
                         v-list-item-content
                           v-list-item-title.caption {{ page.title || page.path }}
                           v-list-item-subtitle.caption.grey--text {{ page.createdAt | moment('MM/DD HH:mm') }}
+                      v-list-item(href='/r?type=created', dense)
+                        v-list-item-content
+                          v-list-item-title.caption.primary--text.text-center more...
                 v-expansion-panel
                   v-expansion-panel-header.overline.indigo--text.px-4.py-2(:class='$vuetify.theme.dark ? `text--lighten-3` : ``', style='min-height:36px')
                     | 최근 수정된 문서
@@ -250,6 +253,26 @@
                         v-list-item-content
                           v-list-item-title.caption {{ page.title || page.path }}
                           v-list-item-subtitle.caption.grey--text {{ page.updatedAt | moment('MM/DD HH:mm') }}
+                      v-list-item(href='/r?type=updated', dense)
+                        v-list-item-content
+                          v-list-item-title.caption.primary--text.text-center more...
+                v-expansion-panel
+                  v-expansion-panel-header.overline.indigo--text.px-4.py-2(:class='$vuetify.theme.dark ? `text--lighten-3` : ``', style='min-height:36px')
+                    | 최근 댓글 문서
+                  v-expansion-panel-content
+                    v-list.py-0(dense)
+                      v-list-item(
+                        v-for='page in recentCommented'
+                        :key='`rcm-` + page.id'
+                        :href='`/` + page.path'
+                        dense
+                      )
+                        v-list-item-content
+                          v-list-item-title.caption {{ page.title || page.path }}
+                          v-list-item-subtitle.caption.grey--text {{ page.lastCommentAt | moment('MM/DD HH:mm') }} · 댓글 {{ page.commentCount }}개
+                      v-list-item(href='/r?type=commented', dense)
+                        v-list-item-content
+                          v-list-item-title.caption.primary--text.text-center more...
 
             //- v-card.mb-5
             //-   .pa-5
@@ -411,6 +434,7 @@ import _ from 'lodash'
 import ClipboardJS from 'clipboard'
 import Vue from 'vue'
 import gql from 'graphql-tag'
+import recentCommentsQuery from 'gql/common/common-comments-query-recent.gql'
 
 /* global siteLangs */
 
@@ -547,7 +571,8 @@ export default {
       pageEditFab: false,
       recentCreated: [],
       recentUpdated: [],
-      recentPanels: [0, 1],
+      recentCommented: [],
+      recentPanels: [0, 1, 2],
       scrollOpts: {
         duration: 1500,
         offset: 0,
@@ -842,6 +867,14 @@ export default {
         this.recentUpdated = _.get(updated, 'data.pages.list', [])
           .filter(page => page.updatedAt !== page.createdAt)
           .slice(0, 5)
+      } catch (err) {
+        // 권한 없으면 조용히 무시
+      }
+
+      // 댓글 조회 권한이 문서 조회 권한과 다를 수 있으므로 별도로 처리 (실패해도 위 위젯엔 영향 없음)
+      try {
+        const commented = await this.$apollo.query({ query: recentCommentsQuery, variables: { limit: 5 }, fetchPolicy: 'network-only' })
+        this.recentCommented = _.get(commented, 'data.comments.recentPages', [])
       } catch (err) {
         // 권한 없으면 조용히 무시
       }

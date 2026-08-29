@@ -5,8 +5,8 @@
     overlay-color='blue darken-4'
     overlay-opacity='.7'
     )
-    v-card.page-selector
-      .dialog-header.is-blue
+    v-card.page-selector(ref='selectorCard', :style='dragStyle')
+      .dialog-header.is-blue(@mousedown='startDrag')
         v-icon.mr-3(color='white') mdi-page-next-outline
         .body-1(v-if='mode === `create`') {{$t('common:pageSelector.createTitle')}}
         .body-1(v-else-if='mode === `move`') {{$t('common:pageSelector.moveTitle')}}
@@ -133,6 +133,8 @@ export default {
     return {
       treeViewCacheId: 0,
       searchLoading: false,
+      dragLeft: null,
+      dragTop: null,
       currentLocale: siteConfig.lang,
       currentFolderPath: '',
       currentPath: '새문서',
@@ -174,6 +176,17 @@ export default {
       get() { return this.value },
       set(val) { this.$emit('input', val) }
     },
+    dragStyle () {
+      if (this.dragLeft === null || this.dragTop === null) {
+        return {}
+      }
+      return {
+        position: 'fixed',
+        left: `${this.dragLeft}px`,
+        top: `${this.dragTop}px`,
+        margin: '0'
+      }
+    },
     currentPages () {
       return _.sortBy(_.filter(this.pages, ['parent', _.head(this.currentNode) || 0]), ['title', 'path'])
     },
@@ -204,6 +217,8 @@ export default {
       if (newValue && !oldValue) {
         this.currentPath = this.path
         this.currentLocale = this.locale
+        this.dragLeft = null
+        this.dragTop = null
         _.delay(() => {
           this.$refs.pathIpt.focus()
         })
@@ -259,6 +274,30 @@ export default {
     close() {
       this.isShown = false
     },
+    startDrag (ev) {
+      const cardEl = this.$refs.selectorCard.$el
+      const rect = cardEl.getBoundingClientRect()
+      if (this.dragLeft === null || this.dragTop === null) {
+        this.dragLeft = rect.left
+        this.dragTop = rect.top
+      }
+
+      const startX = ev.clientX
+      const startY = ev.clientY
+      const startLeft = this.dragLeft
+      const startTop = this.dragTop
+
+      const onMove = moveEv => {
+        this.dragLeft = startLeft + (moveEv.clientX - startX)
+        this.dragTop = startTop + (moveEv.clientY - startY)
+      }
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
     open() {
       const exit = this.openHandler({
         locale: this.currentLocale,
@@ -313,6 +352,10 @@ export default {
 <style lang='scss'>
 
 .page-selector {
+  > .dialog-header {
+    cursor: move;
+    user-select: none;
+  }
   .v-treeview-node__label {
     font-size: 13px;
   }
