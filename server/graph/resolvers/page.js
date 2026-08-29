@@ -425,6 +425,23 @@ module.exports = {
       }
     },
     /**
+     * UPDATE PAGE PROPERTIES ONLY
+     */
+    async updateProperties(obj, args, context) {
+      try {
+        const page = await WIKI.models.pages.updatePageProperties({
+          ...args,
+          user: context.req.user
+        })
+        return {
+          responseResult: graphHelper.generateSuccess('Page properties have been updated.'),
+          page
+        }
+      } catch (err) {
+        return graphHelper.generateError(err)
+      }
+    },
+    /**
      * CONVERT PAGE
      */
     async convert(obj, args, context) {

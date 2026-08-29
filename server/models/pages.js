@@ -489,6 +489,98 @@ module.exports = class Page extends Model {
   }
 
   /**
+   * Update Page Properties Only (title/description/tags/publish state/scripts)
+   * 본문(content)은 건드리지 않는 경량 업데이트 - 뷰 화면에서 문서 보는 중에
+   * "문서정보수정" 팝업으로 바로 저장할 때 사용. 버전 이력 스냅샷/본문 재렌더링을
+   * 만들지 않음 (내용이 그대로라 불필요), 경로/로케일 변경(이동)은 다루지 않음
+   * (기존 "이동" 기능이 별도로 존재)
+   *
+   * @param {Object} opts Page Properties
+   * @returns {Promise} Promise of the Page Model Instance
+   */
+  static async updatePageProperties(opts) {
+    // -> Fetch original page
+    const ogPage = await WIKI.models.pages.query().findById(opts.id)
+    if (!ogPage) {
+      throw new Error('Invalid Page Id')
+    }
+
+    // -> Check for page access
+    if (!WIKI.auth.checkAccess(opts.user, ['write:pages'], {
+      locale: ogPage.localeCode,
+      path: ogPage.path
+    })) {
+      throw new WIKI.Error.PageUpdateForbidden()
+    }
+
+    // -> Format Extra Properties
+    if (!_.isPlainObject(ogPage.extra)) {
+      ogPage.extra = {}
+    }
+
+    // -> Format CSS Scripts
+    let scriptCss = _.get(ogPage, 'extra.css', '')
+    if (opts.scriptCss !== undefined && WIKI.auth.checkAccess(opts.user, ['write:styles'], {
+      locale: ogPage.localeCode,
+      path: ogPage.path
+    })) {
+      scriptCss = _.isEmpty(opts.scriptCss) ? '' : new CleanCSS({ inline: false }).minify(opts.scriptCss).styles
+    }
+
+    // -> Format JS Scripts
+    let scriptJs = _.get(ogPage, 'extra.js', '')
+    if (opts.scriptJs !== undefined && WIKI.auth.checkAccess(opts.user, ['write:scripts'], {
+      locale: ogPage.localeCode,
+      path: ogPage.path
+    })) {
+      scriptJs = opts.scriptJs || ''
+    }
+
+    // -> Update page (본문/경로/로케일 제외)
+    await WIKI.models.pages.query().patch({
+      description: opts.description,
+      isPublished: opts.isPublished === true || opts.isPublished === 1,
+      publishEndDate: opts.publishEndDate || '',
+      publishStartDate: opts.publishStartDate || '',
+      title: opts.title,
+      extra: JSON.stringify({
+        ...ogPage.extra,
+        js: scriptJs,
+        css: scriptCss
+      })
+    }).where('id', ogPage.id)
+    let page = await WIKI.models.pages.getPageFromDb(ogPage.id)
+
+    // -> Save Tags
+    if (opts.tags) {
+      await WIKI.models.tags.associateTags({ tags: opts.tags, page })
+    }
+
+    // -> Update title of page tree entry (경로는 그대로라 이동 로직 불필요)
+    await WIKI.models.knex.table('pageTree').where({
+      pageId: page.id
+    }).update('title', page.title)
+
+    // -> Update Search Index (본문은 안 바뀌었으니 기존 render를 그대로 사용)
+    const pageContents = await WIKI.models.pages.query().findById(page.id).select('render')
+    page.safeContent = WIKI.models.pages.cleanHTML(pageContents.render)
+    await WIKI.data.searchEngine.updated(page)
+
+    // -> Update on Storage
+    if (!opts.skipStorage) {
+      await WIKI.models.storage.pageEvent({
+        event: 'updated',
+        page
+      })
+    }
+
+    // -> Get latest updatedAt
+    page.updatedAt = await WIKI.models.pages.query().findById(page.id).select('updatedAt').then(r => r.updatedAt)
+
+    return page
+  }
+
+  /**
    * Convert an Existing Page
    *
    * @param {Object} opts Page Properties

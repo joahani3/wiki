@@ -143,6 +143,9 @@
                 v-list-item.pl-4(@click='pageEdit', v-if='mode !== `edit` && hasWritePagesPermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-file-document-edit-outline
                   v-list-item-title.body-2 {{$t('common:header.edit')}}
+                v-list-item.pl-4(@click='pageEditProperties', v-if='hasWritePagesPermission')
+                  v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-tag-text-outline
+                  v-list-item-title.body-2 문서정보수정
                 v-list-item.pl-4(@click='pageHistory', v-if='mode !== `history` && hasReadHistoryPermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-history
                   v-list-item-content
@@ -241,6 +244,7 @@
     page-selector(mode='create', v-model='duplicateOpts.modal', :open-handler='pageDuplicateHandle', :path='duplicateOpts.path', :locale='duplicateOpts.locale')
     page-delete(v-model='deletePageModal', v-if='path && path.length')
     page-convert(v-model='convertPageModal', v-if='path && path.length')
+    editor-modal-properties(v-model='propertiesModal', view-mode-only, v-if='path && path.length')
 
     .nav-header-dev(v-if='isDevMode')
       v-icon mdi-alert
@@ -252,6 +256,7 @@
 <script>
 import { get, sync } from 'vuex-pathify'
 import _ from 'lodash'
+import gql from 'graphql-tag'
 
 import movePageMutation from 'gql/common/common-pages-mutation-move.gql'
 
@@ -260,7 +265,8 @@ import movePageMutation from 'gql/common/common-pages-mutation-move.gql'
 export default {
   components: {
     PageDelete: () => import('./page-delete.vue'),
-    PageConvert: () => import('./page-convert.vue')
+    PageConvert: () => import('./page-convert.vue'),
+    EditorModalProperties: () => import('../editor/editor-modal-properties.vue')
   },
   props: {
     dense: {
@@ -281,6 +287,7 @@ export default {
       movePageModal: false,
       convertPageModal: false,
       deletePageModal: false,
+      propertiesModal: false,
       locales: siteLangs,
       isDevMode: false,
       duplicateOpts: {
@@ -407,6 +414,37 @@ export default {
     },
     pageEdit () {
       window.location.assign(`/e/${this.locale}/${this.path}`)
+    },
+    async pageEditProperties () {
+      // 문서 보기 화면에는 스케줄링/스크립트/스타일 필드가 애초에 로드돼 있지 않으므로
+      // 팝업을 열기 전에 pages.single로 채워넣음 (제목/설명/태그/공개여부는 이미 정확함)
+      try {
+        const resp = await this.$apollo.query({
+          query: gql`
+            query ($id: Int!) {
+              pages {
+                single(id: $id) {
+                  publishStartDate
+                  publishEndDate
+                  scriptCss
+                  scriptJs
+                }
+              }
+            }
+          `,
+          variables: { id: this.$store.get('page/id') },
+          fetchPolicy: 'network-only'
+        })
+        const page = _.get(resp, 'data.pages.single', {})
+        this.$store.set('page/publishStartDate', page.publishStartDate || '')
+        this.$store.set('page/publishEndDate', page.publishEndDate || '')
+        this.$store.set('page/scriptCss', page.scriptCss || '')
+        this.$store.set('page/scriptJs', page.scriptJs || '')
+      } catch (err) {
+        this.$store.commit('pushGraphError', err)
+        return
+      }
+      this.propertiesModal = true
     },
     pageHistory () {
       window.location.assign(`/h/${this.locale}/${this.path}`)

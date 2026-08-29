@@ -117,6 +117,20 @@ type PageMutation {
     title: String
   ): PageResponse @auth(requires: ["write:pages", "manage:pages", "manage:system"])
 
+  # 본문(content)은 건드리지 않는 경량 업데이트 - 문서 보기 화면에서 "문서정보수정" 팝업으로
+  # 바로 저장할 때 사용. 버전 이력 스냅샷/재렌더링 없음. 경로/로케일(이동)은 미지원 - 별도 move 사용
+  updateProperties(
+    id: Int!
+    title: String
+    description: String
+    isPublished: Boolean
+    publishEndDate: Date
+    publishStartDate: Date
+    scriptCss: String
+    scriptJs: String
+    tags: [String]
+  ): PageResponse @auth(requires: ["write:pages", "manage:pages", "manage:system"])
+
   convert(
     id: Int!
     editor: String!

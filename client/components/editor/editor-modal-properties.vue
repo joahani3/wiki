@@ -13,8 +13,8 @@
         v-btn.mx-0(
           outlined
           dark
-          :loading='isUploadingDoc'
-          :disabled='isUploadingDoc'
+          :loading='isUploadingDoc || isSavingProperties'
+          :disabled='isUploadingDoc || isSavingProperties'
           @click.native='confirmAndClose'
           )
           v-icon(left) mdi-check
@@ -52,15 +52,16 @@
                   v-text-field(
                     outlined
                     label='경로/파일명'
-                    append-icon='mdi-folder-search'
+                    :append-icon='viewModeOnly ? undefined : "mdi-folder-search"'
                     v-model='path'
-                    :hint='$t(`editor:props.pathHint`)'
+                    :hint='viewModeOnly ? "경로 변경은 상단 메뉴의 \'이동\' 기능을 이용하세요." : $t(`editor:props.pathHint`)'
                     persistent-hint
+                    :readonly='viewModeOnly'
                     @click:append='showPathSelector'
                     :rules='[rules.required, rules.path]'
                     )
-          v-divider
-          v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d5` : `lighten-4`')
+          v-divider(v-if='!viewModeOnly')
+          v-card-text.grey.pt-2.pb-2(v-if='!viewModeOnly', :class='$vuetify.theme.dark ? `darken-3-d5` : `lighten-4`')
             .overline.pb-1 본문작성을 문서로
             v-container.pa-0(fluid, grid-list-md)
               v-layout(row, wrap)
@@ -287,6 +288,13 @@ export default {
     value: {
       type: Boolean,
       default: false
+    },
+    // 전체 에디터 없이(문서 보기 화면에서) 정보만 수정하는 용도로 쓸 때 true.
+    // 본문 업로드 탭을 숨기고, 경로는 읽기전용으로 만들고, 확인 시 본문은 건드리지
+    // 않는 경량 저장(pages.updateProperties)을 직접 호출함
+    viewModeOnly: {
+      type: Boolean,
+      default: false
     }
   },
   data () {
@@ -299,6 +307,7 @@ export default {
       dragWidth: null,
       uploadDocFile: null,
       isUploadingDoc: false,
+      isSavingProperties: false,
       docProgressCurrent: 0,
       docProgressTotal: null,
       docProgressLabel: '',
@@ -415,6 +424,14 @@ export default {
       this.isShown = false
     },
     async confirmAndClose () {
+      if (this.viewModeOnly) {
+        const succeeded = await this.savePageProperties()
+        if (!succeeded) {
+          return
+        }
+        this.close()
+        return
+      }
       if (this.uploadDocFile) {
         const succeeded = await this.processDocumentUpload()
         if (!succeeded) {
@@ -422,6 +439,75 @@ export default {
         }
       }
       this.close()
+    },
+    async savePageProperties () {
+      this.isSavingProperties = true
+      try {
+        const resp = await this.$apollo.mutate({
+          mutation: gql`
+            mutation (
+              $id: Int!
+              $title: String
+              $description: String
+              $isPublished: Boolean
+              $publishStartDate: Date
+              $publishEndDate: Date
+              $scriptCss: String
+              $scriptJs: String
+              $tags: [String]
+            ) {
+              pages {
+                updateProperties(
+                  id: $id
+                  title: $title
+                  description: $description
+                  isPublished: $isPublished
+                  publishStartDate: $publishStartDate
+                  publishEndDate: $publishEndDate
+                  scriptCss: $scriptCss
+                  scriptJs: $scriptJs
+                  tags: $tags
+                ) {
+                  responseResult {
+                    succeeded
+                    message
+                  }
+                }
+              }
+            }
+          `,
+          variables: {
+            id: this.$store.get('page/id'),
+            title: this.title,
+            description: this.description,
+            isPublished: this.isPublished,
+            publishStartDate: this.publishStartDate || null,
+            publishEndDate: this.publishEndDate || null,
+            scriptCss: this.scriptCss,
+            scriptJs: this.scriptJs,
+            tags: this.tags
+          }
+        })
+        const succeeded = _.get(resp, 'data.pages.updateProperties.responseResult.succeeded', false)
+        if (!succeeded) {
+          throw new Error(_.get(resp, 'data.pages.updateProperties.responseResult.message', '저장에 실패했습니다.'))
+        }
+        this.$store.commit('showNotification', {
+          message: '문서 정보가 저장되었습니다.',
+          style: 'success',
+          icon: 'check'
+        })
+        return true
+      } catch (err) {
+        this.$store.commit('showNotification', {
+          message: `문서 정보 저장 실패: ${err.message}`,
+          style: 'error',
+          icon: 'error'
+        })
+        return false
+      } finally {
+        this.isSavingProperties = false
+      }
     },
     startDrag (ev) {
       const cardEl = this.$refs.propsCard.$el

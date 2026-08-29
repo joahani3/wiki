@@ -1,5 +1,10 @@
 <template lang='pug'>
   .editor-ckeditor
+    v-fade-transition
+      .editor-ckeditor-loading(v-if='isLoadingContent')
+        .editor-ckeditor-loading-icon ✍️
+        .subtitle-1.white--text.mt-3 문서를 불러오는 중입니다...
+        .caption.grey--text.text--lighten-1.mt-1 페이지 분량이 많으면 다소 시간이 걸릴 수 있습니다
     div(ref='toolbarContainer')
     div.contents(ref='editor')
     v-system-bar.editor-ckeditor-sysbar(dark, status, color='grey darken-3')
@@ -98,6 +103,7 @@ export default {
         words: 0
       },
       content: '',
+      isLoadingContent: false,
       isConflict: false,
       insertLinkDialog: false,
       footnoteDialog: false,
@@ -343,7 +349,28 @@ export default {
     editableEl.addEventListener('paste', this.onEditorPaste)
 
     if (this.mode !== 'create') {
-      this.editor.setData(this.$store.get('editor/content'))
+      const initialContent = this.$store.get('editor/content')
+      const hasContent = Boolean(initialContent && initialContent.trim().length > 0)
+      // setData()는 동기적으로 실행되며 분량이 많은 문서는 이 호출 자체가 메인
+      // 스레드를 오래 점유할 수 있어, 로딩 표시를 먼저 실제로 화면에 그린(paint) 뒤에
+      // setData()를 호출해야 로딩 표시가 보임 (그냥 순서대로 실행하면 브라우저가 그릴
+      // 틈도 없이 곧바로 무거운 동기 작업이 시작돼 로딩 표시가 안 보이게 됨)
+      if (hasContent) {
+        this.isLoadingContent = true
+        await this.$nextTick()
+        await new Promise(resolve => requestAnimationFrame(resolve))
+        await new Promise(resolve => requestAnimationFrame(resolve))
+      }
+      this.editor.setData(initialContent)
+      if (hasContent) {
+        this.$nextTick(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              this.isLoadingContent = false
+            })
+          })
+        })
+      }
     }
 
     this.editor.model.document.on('change:data', _.debounce(evt => {
@@ -426,6 +453,26 @@ $editor-height-mobile: calc(100vh - 56px - 16px);
   @include until($tablet) {
     height: $editor-height-mobile;
     max-height: $editor-height-mobile;
+  }
+
+  &-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    flex-flow: column nowrap;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, .6);
+  }
+
+  &-loading-icon {
+    display: inline-block;
+    font-size: 2.5rem;
+    animation: editor-ckeditor-loading-writing 0.9s ease-in-out infinite;
   }
 
   &-sysbar {
@@ -529,5 +576,10 @@ $editor-height-mobile: calc(100vh - 56px - 16px);
       }
     }
   }
+}
+
+@keyframes editor-ckeditor-loading-writing {
+  0%, 100% { transform: rotate(-10deg) translateY(0); }
+  50% { transform: rotate(10deg) translateY(-2px); }
 }
 </style>

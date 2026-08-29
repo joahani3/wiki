@@ -18,6 +18,16 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-30] feat: 문서 보기 화면에서 바로 "문서정보수정" 팝업, 편집기 진입 시 로딩 표시 추가
+
+- **이유**: (1) 페이지 분량이 많은 문서를 "수정" 눌러 편집기로 들어갈 때 CKEditor가 본문을 화면에 그리는 동안 아무 표시 없이 멈춘 것처럼 보이던 문제. (2) 문서 보기 화면에서 편집기로 안 넘어가고 제목/설명/태그 등 정보만 바로 고칠 수 있는 메뉴 요청
+- **위치**:
+  - `client/components/editor/editor-ckeditor.vue` : 기존 문서 편집 진입 시(`setData()` 호출) 로딩 오버레이 추가. `setData()`가 동기적으로 메인 스레드를 오래 점유할 수 있어, 오버레이를 실제로 화면에 페인트한 뒤(더블 `requestAnimationFrame`)에 `setData()`를 호출하도록 순서 조정
+  - `server/graph/schemas/page.graphql`, `server/graph/resolvers/page.js`, `server/models/pages.js` : 새 경량 mutation `pages.updateProperties` 추가 - 본문(content)은 건드리지 않고 제목/설명/태그/공개여부/예약발행/스크립트만 저장. 기존 `pages.update`는 본문이 비어있으면 실패하고 호출마다 버전 이력을 생성하는 "전체 저장" 구조라 정보만 고치는 용도에 안 맞았음
+  - `client/components/editor/editor-modal-properties.vue` : `viewModeOnly` prop 추가 - 본문 업로드 탭 숨김, 경로/파일명 읽기전용(경로 변경은 기존 "이동" 기능 사용), 확인 시 `pages.updateProperties` 직접 호출
+  - `client/components/common/nav-header.vue` : "현재 문서" 메뉴에 "문서정보수정" 항목 추가. 클릭 시 문서 보기 화면에 없던 예약발행/스크립트 데이터를 `pages.single`로 미리 채운 뒤 `editor-modal-properties`를 `view-mode-only`로 오픈
+- **내용**: 저장 시 Vuex `page` 스토어를 통해 화면의 제목/설명/태그가 새로고침 없이 바로 반영됨
+
 ### [2026-08-30] feat: txt/md 문서 변환 구현, 원본 파일 자산 저장 및 다운로드 링크 추가
 
 - **이유**: "본문작성을 문서로" 기능의 마지막 남은 형식(txt/md)까지 구현 요청. 이어서 "업로드한 원본 파일이 서버에 남아있냐"는 질문에 확인해보니 지금까지는 변환 후 원본이 전혀 보존되지 않고 있었음(PDF도 페이지 스크린샷만 자산으로 남고 원본 PDF는 폐기) - 원본을 정식 자산으로 저장하고 본문 상단에 다운로드 링크를 넣어달라는 요청
