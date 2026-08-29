@@ -18,6 +18,16 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-30] feat: PDF 업로드 실시간 진행률/렌더링 대기 표시, 한글 텍스트 깨짐 자동 감지+OCR 대체
+
+- **이유**: 문서 업로드 크기 제한(5MB)에 걸려 서버가 HTML 에러 페이지를 반환해 "Unexpected token '<'" 오류가 나던 문제, 변환은 다 끝났는데 본문에 실제로 반영되는(CKEditor 렌더링) 동안 진행바가 멈춘 것처럼 보이던 문제, 그리고 텍스트 레이어가 있는 PDF인데도(ToUnicode CMap이 없는 폰트) 한글이 완전히 깨진 문자로 추출되던 문제를 순서대로 발견하고 수정
+- **위치**:
+  - `server/controllers/upload.js` : 문서 업로드 전용 상한을 50MB로 분리하고 multer 에러를 JSON으로 반환하도록 수정. `/u/parse-document` 응답을 NDJSON 스트림으로 바꿔 진행 상황(`{type:'progress'}`)을 실시간 전송, 완료/실패도 스트림 이벤트(`{type:'complete'|'error'}`)로 알림 (이미 응답이 시작된 뒤엔 HTTP 상태 코드를 바꿀 수 없어서)
+  - `server/helpers/pdfConvert.js` : 페이지별 진행률 콜백(`onProgress`) 추가. 추출된 텍스트의 정상 문자(한글/영문/숫자/일반 문장부호) 비율이 낮으면 "인코딩 깨짐"으로 판단해 텍스트가 있어도 OCR로 대체(`looksGarbled`). OCR 해상도 150→300dpi, tesseract를 LSTM 전용 모드(`--oem 1`)로, Alpine 로케일 미비 대응으로 `LANG=C.UTF-8` 명시
+  - `client/components/editor/editor-modal-properties.vue` : NDJSON 스트림을 읽어 진행바/경과시간/(PDF의 경우) 예상 남은 시간 표시. 변환 완료 후에도 에디터가 실제로 화면에 다 그릴 때까지("본문 작성 중") 별도 대기 단계 추가. 진행 중에는 항상 ✍️ 이모지가 흔들리는 애니메이션으로 "멈추지 않았음"을 표시. 서버가 이미 보낸 페이지 카운트를 화면에서 또 붙이던 중복 표시(`(179/180) (179/180)`)도 수정
+  - `client/components/editor/editor-ckeditor.vue` : `overwriteEditorContent` 처리 후 `requestAnimationFrame` 두 번으로 실제 화면 페인트가 끝난 시점을 감지해 `editorContentOverwritten` 완료 신호를 쏘도록 추가
+- **내용**: 실제 사용자 PDF 파일(`지능형_전력망_사이버보안_가이드라인(2026.03).pdf`, 180페이지, Adobe InDesign/Distiller 생성)로 poppler `pdftotext`와 직접 대조해 한글 페이지가 라이브러리와 무관하게 동일하게 깨짐을 확인, 정상 문자 비율 검사로 해결됨을 검증. 단, 알파벳만으로 이뤄진 자리이동식 깨짐(예: 영문 참고문헌 페이지)은 이번 범위에서 제외(요청에 따라 한글 케이스만 처리)
+
 ### [2026-08-29] feat: doc/docx/xls/xlsx/pptx 문서→본문 변환 구현, hwp 변환 오류 수정
 
 - **이유**: hwp/hwpx/pdf에 이어 doc, xlsx, ppt 계열도 처리해달라는 요청. 구현 직후 실기기 테스트에서 hwp 업로드 시 "HwpxReader is not a constructor" 오류 발견

@@ -160,13 +160,24 @@ async function convertHwpFamilyToHtml (buf, ext) {
   }
 }
 
+// 문서 업로드는 일반 자산 업로드보다 큰 파일(특히 스캔본 PDF)이 많아 별도의 넉넉한 상한을 둠
+const DOC_UPLOAD_MAX_SIZE = 50 * 1024 * 1024 // 50MB
+
 router.post('/u/parse-document', (req, res, next) => {
   multer({
     storage: multer.memoryStorage(),
     limits: {
-      fileSize: WIKI.config.uploads.maxFileSize
+      fileSize: DOC_UPLOAD_MAX_SIZE
     }
-  }).single('document')(req, res, next)
+  }).single('document')(req, res, err => {
+    if (err) {
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? `파일 용량이 너무 큽니다. 최대 ${Math.floor(DOC_UPLOAD_MAX_SIZE / 1024 / 1024)}MB까지 업로드할 수 있습니다.`
+        : `업로드 처리 중 오류가 발생했습니다: ${err.message}`
+      return res.status(400).json({ succeeded: false, message })
+    }
+    next()
+  })
 }, async (req, res, next) => {
   if (!_.some(req.user.permissions, pm => _.includes(['write:pages', 'manage:pages', 'manage:system'], pm))) {
     return res.status(403).json({
@@ -190,19 +201,30 @@ router.post('/u/parse-document', (req, res, next) => {
     })
   }
 
+  // 변환에 시간이 걸릴 수 있어(특히 OCR) NDJSON 스트림으로 진행 상황을 클라이언트에 실시간 전달.
+  // 이 지점부터는 응답이 이미 시작될 수 있으므로 실패도 HTTP 상태 코드가 아니라 {type:'error'} 이벤트로 알림.
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+  const send = obj => { res.write(JSON.stringify(obj) + '\n') }
+  const onProgress = (current, total, label) => send({ type: 'progress', current, total, label })
+
   let content
   try {
     if (ext === '.hwp' || ext === '.hwpx') {
+      onProgress(0, null, '문서 변환 중...')
       content = await convertHwpFamilyToHtml(req.file.buffer, ext)
     } else if (ext === '.pdf') {
-      content = await convertPdfToHtml({ buffer: req.file.buffer, originalName, user: req.user })
+      content = await convertPdfToHtml({ buffer: req.file.buffer, originalName, user: req.user, onProgress })
     } else if (ext === '.docx' || ext === '.pptx') {
+      onProgress(0, null, '문서 변환 중...')
       content = await convertOfficeToHtml(req.file.buffer, ext.slice(1))
     } else if (ext === '.doc') {
+      onProgress(0, null, '문서 변환 중...')
       content = await convertLegacyDocToHtml(req.file.buffer)
     } else if (ext === '.xlsx') {
+      onProgress(0, null, '문서 변환 중...')
       content = await convertOfficeToHtml(req.file.buffer, 'xlsx')
     } else if (ext === '.xls') {
+      onProgress(0, null, '문서 변환 중...')
       content = convertLegacyXlsToHtml(req.file.buffer)
     } else {
       // TODO: 다음 단계에서 txt/md 변환 구현
@@ -212,19 +234,14 @@ router.post('/u/parse-document', (req, res, next) => {
     if (!content || !content.trim()) {
       content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
     }
+
+    send({ type: 'complete', succeeded: true, filename: originalName, content })
   } catch (err) {
     WIKI.logger.warn(`문서 변환 실패 (${originalName}): ${err.message}`)
-    return res.status(422).json({
-      succeeded: false,
-      message: `문서 변환에 실패했습니다: ${err.message}`
-    })
+    send({ type: 'error', message: `문서 변환에 실패했습니다: ${err.message}` })
+  } finally {
+    res.end()
   }
-
-  res.json({
-    succeeded: true,
-    filename: originalName,
-    content
-  })
 })
 
 module.exports = router

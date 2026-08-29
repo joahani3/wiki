@@ -380,6 +380,16 @@ export default {
     })
     this.$root.$on('overwriteEditorContent', () => {
       this.editor.setData(this.$store.get('editor/content'))
+      // setData() 자체는 동기적이지만 큰 문서(문단/이미지가 많은 경우)는 실제 화면
+      // 렌더링(페인트)이 뒤늦게 끝나므로, 두 번의 requestAnimationFrame으로 브라우저가
+      // 실제로 그린 뒤에야 완료를 알림 (긴 문서 업로드 진행률 표시에 사용)
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            this.$root.$emit('editorContentOverwritten')
+          })
+        })
+      })
     })
   },
   beforeDestroy () {

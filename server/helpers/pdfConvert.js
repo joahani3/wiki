@@ -10,8 +10,35 @@ const execFileAsync = promisify(execFile)
 
 /* global WIKI */
 
-const RASTER_DPI = 150
+const RASTER_DPI = 300
 const MIN_TEXT_LENGTH = 10 // 이보다 짧으면 스캔본으로 간주하고 OCR 시도
+const GARBLED_NORMAL_RATIO_THRESHOLD = 0.7 // 정상 문자 비율이 이보다 낮으면 인코딩 깨짐으로 간주
+
+/**
+ * 일부 PDF(특히 한글 문서를 PDF로 변환한 경우)는 폰트에 올바른 ToUnicode CMap이
+ * 없어서, 실제로는 텍스트 레이어가 있어도 pdfjs가 완전히 엉뚱한 유니코드로
+ * 추출하는 경우가 있다(예: CJK 부수/기호 영역의 의미 없는 문자들). 이런 경우
+ * 텍스트 자체는 비어있지 않아 기존 "텍스트 없음" 판정을 통과하므로, 정상적인
+ * 문자(한글/영문/숫자/일반 문장부호) 비율이 낮으면 별도로 걸러내 OCR로 대체한다.
+ */
+function looksGarbled (text) {
+  const chars = Array.from(text.replace(/\s/g, ''))
+  if (chars.length === 0) {
+    return false
+  }
+  let normalCount = 0
+  for (const ch of chars) {
+    const code = ch.codePointAt(0)
+    const isHangulSyllable = code >= 0xAC00 && code <= 0xD7A3
+    const isHangulJamo = (code >= 0x1100 && code <= 0x11FF) || (code >= 0x3130 && code <= 0x318F)
+    const isAsciiPrintable = code >= 0x20 && code <= 0x7E
+    const isCommonPunctOrFullwidth = (code >= 0x2010 && code <= 0x2027) || (code >= 0x3000 && code <= 0x303F) || (code >= 0xFF00 && code <= 0xFFEF)
+    if (isHangulSyllable || isHangulJamo || isAsciiPrintable || isCommonPunctOrFullwidth) {
+      normalCount++
+    }
+  }
+  return (normalCount / chars.length) < GARBLED_NORMAL_RATIO_THRESHOLD
+}
 
 async function loadPdfjs () {
   return import('pdfjs-dist/legacy/build/pdf.mjs')
@@ -73,8 +100,11 @@ async function rasterizePage (pdfPath, pageNum, tmpDir) {
  * tesseract-ocr로 이미지에서 텍스트 추출 (한국어+영어)
  */
 async function ocrImage (imgPath) {
-  const { stdout } = await execFileAsync('tesseract', [imgPath, 'stdout', '-l', 'kor+eng'], {
-    maxBuffer: 1024 * 1024 * 20
+  const { stdout } = await execFileAsync('tesseract', [imgPath, 'stdout', '-l', 'kor+eng', '--oem', '1'], {
+    maxBuffer: 1024 * 1024 * 20,
+    encoding: 'utf8',
+    // Alpine(musl)은 로케일 데이터가 빈약해 LANG 미설정 시 텍스트 처리가 어긋날 수 있어 명시적으로 지정
+    env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' }
   })
   return stdout.trim()
 }
@@ -107,7 +137,7 @@ async function uploadPageImage ({ imgPath, assetBaseName, pageNum, user }) {
 /**
  * PDF 버퍼를 페이지별 (텍스트 or OCR 텍스트) + 원본 페이지 스크린샷이 함께 있는 HTML로 변환
  */
-async function convertPdfToHtml ({ buffer, originalName, user }) {
+async function convertPdfToHtml ({ buffer, originalName, user, onProgress }) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wiki-pdf-'))
   const pdfPath = path.join(tmpDir, 'input.pdf')
   await fs.writeFile(pdfPath, buffer)
@@ -138,6 +168,10 @@ async function convertPdfToHtml ({ buffer, originalName, user }) {
     const numPages = pdfDocument.numPages
     const pageBlocks = []
 
+    if (onProgress) {
+      onProgress(0, numPages, 'PDF 페이지 처리 중')
+    }
+
     for (let i = 1; i <= numPages; i++) {
       let pageText = ''
       try {
@@ -152,7 +186,8 @@ async function convertPdfToHtml ({ buffer, originalName, user }) {
       try {
         const imgPath = await rasterizePage(pdfPath, i, tmpDir)
 
-        if (_.isEmpty(_.trim(pageText)) || _.trim(pageText).length < MIN_TEXT_LENGTH) {
+        const trimmedForCheck = _.trim(pageText)
+        if (_.isEmpty(trimmedForCheck) || trimmedForCheck.length < MIN_TEXT_LENGTH || looksGarbled(trimmedForCheck)) {
           try {
             const ocrText = await ocrImage(imgPath)
             if (!_.isEmpty(_.trim(ocrText))) {
@@ -175,6 +210,10 @@ async function convertPdfToHtml ({ buffer, originalName, user }) {
       const imgHtml = imgUrl ? `<p><img src="${imgUrl}" alt="페이지 ${i} 원본"></p>` : ''
 
       pageBlocks.push(`<h3>페이지 ${i}</h3>${textHtml}${imgHtml}`)
+
+      if (onProgress) {
+        onProgress(i, numPages, 'PDF 페이지 처리 중')
+      }
     }
 
     return pageBlocks.join('<hr>')

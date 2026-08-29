@@ -76,8 +76,20 @@
                     persistent-hint
                     show-size
                     )
-                  v-progress-linear(v-if='isUploadingDoc', indeterminate, color='primary', height='6', rounded)
-                  .caption.grey--text.mt-1(v-if='isUploadingDoc') 업로드 및 변환 처리 중...
+                  v-progress-linear(
+                    v-if='isUploadingDoc'
+                    :indeterminate='!docProgressTotal'
+                    :value='docProgressPercent || 0'
+                    color='primary'
+                    height='6'
+                    rounded
+                    )
+                  .caption.grey--text.mt-1(v-if='isUploadingDoc')
+                    span.editor-props-doc-working-icon ✍️
+                    span &nbsp;{{ docProgressLabel }}
+                    span(v-if='docProgressTotal') &nbsp;({{ docProgressCurrent }}/{{ docProgressTotal }})
+                    span &nbsp;· 경과 {{ formatDocTime(docElapsedSeconds) }}
+                    span(v-if='docEstimatedRemainingSeconds !== null') &nbsp;· 예상 남은 시간 약 {{ formatDocTime(docEstimatedRemainingSeconds) }}
           v-divider
           v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
             .overline.pb-1 {{$t('editor:props.categorization')}}
@@ -287,6 +299,12 @@ export default {
       dragWidth: null,
       uploadDocFile: null,
       isUploadingDoc: false,
+      docProgressCurrent: 0,
+      docProgressTotal: null,
+      docProgressLabel: '',
+      docElapsedSeconds: 0,
+      docUploadStartTime: 0,
+      docElapsedTimer: null,
       namespaces: siteLangs.length ? siteLangs.map(ns => ns.code) : [siteConfig.lang],
       newTag: '',
       newTagSuggestions: [],
@@ -333,6 +351,19 @@ export default {
     hasStylePermission: get('page/effectivePermissions@pages.style'),
     pageSelectorMode () {
       return (this.mode === 'create') ? 'create' : 'move'
+    },
+    docProgressPercent () {
+      if (!this.docProgressTotal) {
+        return null
+      }
+      return Math.round((this.docProgressCurrent / this.docProgressTotal) * 100)
+    },
+    docEstimatedRemainingSeconds () {
+      if (!this.docProgressTotal || this.docProgressCurrent < 1) {
+        return null
+      }
+      const avgPerItem = this.docElapsedSeconds / this.docProgressCurrent
+      return Math.max(0, Math.round(avgPerItem * (this.docProgressTotal - this.docProgressCurrent)))
     }
   },
   watch: {
@@ -424,8 +455,34 @@ export default {
       this.locale = locale
       this.path = path
     },
+    formatDocTime (totalSeconds) {
+      const s = Math.max(0, Math.round(totalSeconds || 0))
+      const m = Math.floor(s / 60)
+      const r = s % 60
+      return `${m}:${String(r).padStart(2, '0')}`
+    },
+    waitForEditorRender () {
+      return new Promise(resolve => {
+        // editor-ckeditor.vue가 실제 화면 렌더링까지 끝낸 뒤 이 이벤트를 쏨.
+        // 혹시 못 받는 경우를 대비해 15초 안전장치를 둠.
+        const timeout = setTimeout(resolve, 15000)
+        this.$root.$once('editorContentOverwritten', () => {
+          clearTimeout(timeout)
+          resolve()
+        })
+      })
+    },
     async processDocumentUpload () {
       this.isUploadingDoc = true
+      this.docProgressCurrent = 0
+      this.docProgressTotal = null
+      this.docProgressLabel = '업로드 중...'
+      this.docElapsedSeconds = 0
+      this.docUploadStartTime = Date.now()
+      this.docElapsedTimer = setInterval(() => {
+        this.docElapsedSeconds = (Date.now() - this.docUploadStartTime) / 1000
+      }, 1000)
+
       try {
         const jwtToken = Cookies.get('jwt')
         const formData = new FormData()
@@ -436,14 +493,56 @@ export default {
           headers: { 'Authorization': `Bearer ${jwtToken}` },
           body: formData
         })
-        const data = await resp.json()
-        if (!resp.ok || !data.succeeded) {
-          throw new Error(_.get(data, 'message', '업로드에 실패했습니다.'))
+
+        if (!resp.ok) {
+          // 이 단계에서 실패하면 아직 스트리밍 전(권한/파일없음/확장자/용량 검증 실패)이라 일반 JSON 응답
+          let errData = {}
+          try {
+            errData = await resp.json()
+          } catch (parseErr) { /* 무시하고 아래 기본 메시지 사용 */ }
+          throw new Error(_.get(errData, 'message', `서버 오류 (HTTP ${resp.status})`))
+        }
+
+        const reader = resp.body.getReader()
+        const decoder = new TextDecoder()
+        let buffered = ''
+        let finalEvent = null
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffered += decoder.decode(value, { stream: true })
+          const lines = buffered.split('\n')
+          buffered = lines.pop() // 마지막 줄은 아직 미완성일 수 있으니 다음 청크와 합침
+          for (const line of lines) {
+            if (!line.trim()) continue
+            const evt = JSON.parse(line)
+            if (evt.type === 'progress') {
+              this.docProgressCurrent = evt.current
+              this.docProgressTotal = evt.total
+              this.docProgressLabel = evt.label
+            } else if (evt.type === 'complete' || evt.type === 'error') {
+              finalEvent = evt
+            }
+          }
+        }
+
+        if (!finalEvent || finalEvent.type === 'error') {
+          throw new Error(_.get(finalEvent, 'message', '업로드에 실패했습니다.'))
         }
 
         const currentContent = this.$store.get('editor/content')
-        this.$store.set('editor/content', _.isEmpty(_.trim(currentContent)) ? data.content : `${currentContent}\n\n${data.content}`)
+        this.$store.set('editor/content', _.isEmpty(_.trim(currentContent)) ? finalEvent.content : `${currentContent}\n\n${finalEvent.content}`)
+
+        // 추출/변환 자체는 끝났지만, 문단·이미지가 많은 문서는 에디터가 화면에
+        // 실제로 그려 넣는 데 추가 시간이 걸림 - 이 구간은 정확한 예상 시간을 알 수
+        // 없어 인디케이터(불확정)로만 표시
+        this.docProgressLabel = '추출 완료 - 본문 작성 중...'
+        this.docProgressCurrent = 0
+        this.docProgressTotal = null
         this.$root.$emit('overwriteEditorContent')
+        await this.waitForEditorRender()
+
         this.$store.commit('showNotification', {
           message: '문서 내용이 본문에 반영되었습니다.',
           style: 'success',
@@ -460,6 +559,7 @@ export default {
         return false
       } finally {
         this.isUploadingDoc = false
+        clearInterval(this.docElapsedTimer)
       }
     },
     loadEditor(ref, mode) {
@@ -525,6 +625,16 @@ export default {
 </script>
 
 <style lang='scss'>
+
+.editor-props-doc-working-icon {
+  display: inline-block;
+  animation: editor-props-doc-writing 0.9s ease-in-out infinite;
+}
+
+@keyframes editor-props-doc-writing {
+  0%, 100% { transform: rotate(-10deg) translateY(0); }
+  50% { transform: rotate(10deg) translateY(-2px); }
+}
 
 .editor-props-codeeditor {
   background-color: mc('grey', '900');
