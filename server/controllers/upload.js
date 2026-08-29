@@ -104,4 +104,45 @@ router.get('/u', async (req, res, next) => {
   })
 })
 
+// 본문 등록용 문서 업로드 (hwp/pdf/doc/docx/txt/md) - 1단계: 업로드만 받고 실제 파싱은 다음 단계에서 구현
+const docBodyAllowedExt = ['.hwp', '.pdf', '.doc', '.docx', '.txt', '.md']
+router.post('/u/parse-document', (req, res, next) => {
+  multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: WIKI.config.uploads.maxFileSize
+    }
+  }).single('document')(req, res, next)
+}, async (req, res, next) => {
+  if (!_.some(req.user.permissions, pm => _.includes(['write:pages', 'manage:pages', 'manage:system'], pm))) {
+    return res.status(403).json({
+      succeeded: false,
+      message: 'You are not authorized to upload documents.'
+    })
+  }
+  if (!req.file) {
+    return res.status(400).json({
+      succeeded: false,
+      message: 'Missing upload payload.'
+    })
+  }
+
+  const originalName = sanitize(req.file.originalname)
+  const ext = path.extname(originalName).toLowerCase()
+  if (!_.includes(docBodyAllowedExt, ext)) {
+    return res.status(400).json({
+      succeeded: false,
+      message: `Unsupported file type: ${ext || 'unknown'}. Allowed: ${docBodyAllowedExt.join(', ')}`
+    })
+  }
+
+  // TODO: 다음 단계에서 확장자별로 실제 파싱(mammoth/pdf-parse/hwp.js 등)을 붙여
+  // req.file.buffer로부터 실제 변환된 HTML/마크다운을 content로 채운다.
+  res.json({
+    succeeded: true,
+    filename: originalName,
+    content: `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 업로드됨 — 문서 파싱 기능은 다음 업데이트에서 제공될 예정입니다.</p></blockquote>`
+  })
+})
+
 module.exports = router

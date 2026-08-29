@@ -83,6 +83,7 @@
           flat
           clearable
           style='border-radius: 0 4px 4px 0;'
+          @keydown.enter='isValidPath && open()'
         )
       v-card-text.caption.grey--text.py-1
         | 폴더 만들기: 문서명 앞에 /폴더명/ 을 입력하시면 해당 폴더가 만들어집니다.
@@ -135,6 +136,7 @@ export default {
       searchLoading: false,
       dragLeft: null,
       dragTop: null,
+      dragWidth: null,
       currentLocale: siteConfig.lang,
       currentFolderPath: '',
       currentPath: '새문서',
@@ -184,6 +186,7 @@ export default {
         position: 'fixed',
         left: `${this.dragLeft}px`,
         top: `${this.dragTop}px`,
+        width: `${this.dragWidth}px`,
         margin: '0'
       }
     },
@@ -219,6 +222,7 @@ export default {
         this.currentLocale = this.locale
         this.dragLeft = null
         this.dragTop = null
+        this.dragWidth = null
         _.delay(() => {
           this.$refs.pathIpt.focus()
         })
@@ -280,6 +284,7 @@ export default {
       if (this.dragLeft === null || this.dragTop === null) {
         this.dragLeft = rect.left
         this.dragTop = rect.top
+        this.dragWidth = rect.width
       }
 
       const startX = ev.clientX

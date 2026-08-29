@@ -5,18 +5,18 @@
     width='1000'
     :fullscreen='$vuetify.breakpoint.smAndDown'
     )
-    .dialog-header
-      v-icon(color='white') mdi-tag-text-outline
-      .subtitle-1.white--text.ml-3 {{$t('editor:props.pageProperties')}}
-      v-spacer
-      v-btn.mx-0(
-        outlined
-        dark
-        @click.native='close'
-        )
-        v-icon(left) mdi-check
-        span {{ $t('common:actions.ok') }}
-    v-card(tile)
+    v-card.editor-props-card(tile, ref='propsCard', :style='dragStyle')
+      .dialog-header(@mousedown='startDrag')
+        v-icon(color='white') mdi-tag-text-outline
+        .subtitle-1.white--text.ml-3 {{$t('editor:props.pageProperties')}}
+        v-spacer
+        v-btn.mx-0(
+          outlined
+          dark
+          @click.native='close'
+          )
+          v-icon(left) mdi-check
+          span {{ $t('common:actions.ok') }}
       v-tabs(color='white', background-color='blue darken-1', dark, centered, v-model='currentTab')
         v-tab {{$t('editor:props.info')}}
         v-tab {{$t('editor:props.scheduling')}}
@@ -24,8 +24,8 @@
         //- v-tab(disabled) {{$t('editor:props.social')}}
         v-tab(:disabled='!hasStylePermission') {{$t('editor:props.styles')}}
         v-tab-item(transition='fade-transition', reverse-transition='fade-transition')
-          v-card-text.pt-5
-            .overline.pb-5 {{$t('editor:props.pageInfo')}}
+          v-card-text.pt-2.pb-2
+            .overline.pb-1 {{$t('editor:props.pageInfo')}}
             v-text-field(
               ref='iptTitle'
               outlined
@@ -42,9 +42,9 @@
               :hint='$t(`editor:props.shortDescriptionHint`)'
               )
           v-divider
-          v-card-text.grey.pt-5(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
-            .overline.pb-5 경로/파일명
-            v-container.pa-0(fluid, grid-list-lg)
+          v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
+            .overline.pb-1 경로/파일명
+            v-container.pa-0(fluid, grid-list-md)
               v-layout(row, wrap)
                 v-flex(xs12)
                   v-text-field(
@@ -58,9 +58,27 @@
                     :rules='[rules.required, rules.path]'
                     )
           v-divider
-          v-card-text.grey.pt-5(:class='$vuetify.theme.dark ? `darken-3-d5` : `lighten-4`')
-            .overline.pb-5 {{$t('editor:props.categorization')}}
-            v-chip-group.radius-5.mb-5(column, v-if='tags && tags.length > 0')
+          v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d5` : `lighten-4`')
+            .overline.pb-1 본문작성을 문서로
+            v-container.pa-0(fluid, grid-list-md)
+              v-layout(row, wrap)
+                v-flex(xs12)
+                  v-file-input(
+                    outlined
+                    label='문서 업로드 (hwp, pdf, doc, docx, txt, md)'
+                    accept='.hwp,.pdf,.doc,.docx,.txt,.md'
+                    prepend-icon='mdi-file-document-outline'
+                    v-model='uploadDocFile'
+                    :loading='isUploadingDoc'
+                    :disabled='isUploadingDoc'
+                    hint='업로드한 문서의 내용을 본문으로 등록합니다.'
+                    persistent-hint
+                    @change='onDocFileSelected'
+                    )
+          v-divider
+          v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
+            .overline.pb-1 {{$t('editor:props.categorization')}}
+            v-chip-group.radius-5.mb-2(column, v-if='tags && tags.length > 0')
               v-chip(
                 v-for='tag of tags'
                 :key='`tag-` + tag'
@@ -93,8 +111,8 @@
               inset
               )
           v-divider
-          v-card-text.grey.pt-5(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
-            v-container.pa-0(fluid, grid-list-lg)
+          v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
+            v-container.pa-0(fluid, grid-list-md)
               v-row
                 v-col(cols='6')
                   v-dialog(
@@ -233,12 +251,29 @@
             .caption {{$t('editor:props.cssHint')}}
 
     page-selector(:mode='pageSelectorMode', v-model='pageSelectorShown', :path='path', :locale='locale', :open-handler='setPath')
+
+    v-dialog(v-model='docChoiceShown', max-width='450px')
+      v-card
+        v-card-title.text-subtitle-1 문서 업로드
+        v-card-text
+          | "{{ pendingDocFilename }}"의 내용을 본문에 반영할까요?
+        v-card-actions
+          v-spacer
+          v-btn(text, @click='docChoiceShown = false') 취소
+          template(v-if='hasExistingContent')
+            v-btn(text, color='primary', @click='applyDocContent(`append`)') 하단에 추가
+            v-btn(color='primary', depressed, @click='applyDocContent(`overwrite`)') 덮어쓰기
+          template(v-else)
+            v-btn(color='primary', depressed, @click='applyDocContent(`overwrite`)')
+              v-icon(left, small) mdi-check
+              | 확인
 </template>
 
 <script>
 import _ from 'lodash'
 import { sync, get } from 'vuex-pathify'
 import gql from 'graphql-tag'
+import Cookies from 'js-cookie'
 
 import CodeMirror from 'codemirror'
 import 'codemirror/lib/codemirror.css'
@@ -260,6 +295,14 @@ export default {
       isPublishStartShown: false,
       isPublishEndShown: false,
       pageSelectorShown: false,
+      dragLeft: null,
+      dragTop: null,
+      dragWidth: null,
+      uploadDocFile: null,
+      isUploadingDoc: false,
+      docChoiceShown: false,
+      pendingDocContent: '',
+      pendingDocFilename: '',
       namespaces: siteLangs.length ? siteLangs.map(ns => ns.code) : [siteConfig.lang],
       newTag: '',
       newTagSuggestions: [],
@@ -279,6 +322,18 @@ export default {
       get() { return this.value },
       set(val) { this.$emit('input', val) }
     },
+    dragStyle () {
+      if (this.dragLeft === null || this.dragTop === null) {
+        return {}
+      }
+      return {
+        position: 'fixed',
+        left: `${this.dragLeft}px`,
+        top: `${this.dragTop}px`,
+        width: `${this.dragWidth}px`,
+        margin: '0'
+      }
+    },
     mode: get('editor/mode'),
     title: sync('page/title'),
     description: sync('page/description'),
@@ -292,6 +347,9 @@ export default {
     scriptCss: sync('page/scriptCss'),
     hasScriptPermission: get('page/effectivePermissions@pages.script'),
     hasStylePermission: get('page/effectivePermissions@pages.style'),
+    hasExistingContent () {
+      return !_.isEmpty(_.trim(this.$store.get('editor/content')))
+    },
     pageSelectorMode () {
       return (this.mode === 'create') ? 'create' : 'move'
     }
@@ -299,6 +357,9 @@ export default {
   watch: {
     value (newValue, oldValue) {
       if (newValue) {
+        this.dragLeft = null
+        this.dragTop = null
+        this.dragWidth = null
         _.delay(() => {
           this.$refs.iptTitle.focus()
         }, 500)
@@ -341,12 +402,88 @@ export default {
     close() {
       this.isShown = false
     },
+    startDrag (ev) {
+      const cardEl = this.$refs.propsCard.$el
+      const rect = cardEl.getBoundingClientRect()
+      if (this.dragLeft === null || this.dragTop === null) {
+        this.dragLeft = rect.left
+        this.dragTop = rect.top
+        this.dragWidth = rect.width
+      }
+
+      const startX = ev.clientX
+      const startY = ev.clientY
+      const startLeft = this.dragLeft
+      const startTop = this.dragTop
+
+      const onMove = moveEv => {
+        this.dragLeft = startLeft + (moveEv.clientX - startX)
+        this.dragTop = startTop + (moveEv.clientY - startY)
+      }
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
     showPathSelector() {
       this.pageSelectorShown = true
     },
     setPath({ path, locale }) {
       this.locale = locale
       this.path = path
+    },
+    async onDocFileSelected (file) {
+      if (!file) {
+        return
+      }
+      this.isUploadingDoc = true
+      try {
+        const jwtToken = Cookies.get('jwt')
+        const formData = new FormData()
+        formData.append('document', file, file.name)
+
+        const resp = await fetch('/u/parse-document', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${jwtToken}` },
+          body: formData
+        })
+        const data = await resp.json()
+        if (!resp.ok || !data.succeeded) {
+          throw new Error(_.get(data, 'message', '업로드에 실패했습니다.'))
+        }
+
+        this.pendingDocContent = data.content
+        this.pendingDocFilename = data.filename
+        this.docChoiceShown = true
+      } catch (err) {
+        this.$store.commit('showNotification', {
+          message: `문서 업로드 실패: ${err.message}`,
+          style: 'error',
+          icon: 'error'
+        })
+      } finally {
+        this.isUploadingDoc = false
+        this.uploadDocFile = null
+      }
+    },
+    applyDocContent (action) {
+      const currentContent = this.$store.get('editor/content')
+      if (action === 'append') {
+        this.$store.set('editor/content', _.isEmpty(_.trim(currentContent)) ? this.pendingDocContent : `${currentContent}\n\n${this.pendingDocContent}`)
+      } else {
+        this.$store.set('editor/content', this.pendingDocContent)
+      }
+      this.$root.$emit('overwriteEditorContent')
+      this.$store.commit('showNotification', {
+        message: '문서 내용이 본문에 반영되었습니다.',
+        style: 'success',
+        icon: 'check'
+      })
+      this.docChoiceShown = false
+      this.pendingDocContent = ''
+      this.pendingDocFilename = ''
     },
     loadEditor(ref, mode) {
       this.cm = CodeMirror.fromTextArea(ref, {
@@ -433,6 +570,11 @@ export default {
     color: mc('grey', '500');
     padding: 5px 10px;
   }
+}
+
+.editor-props-card > .dialog-header {
+  cursor: move;
+  user-select: none;
 }
 
 </style>

@@ -18,6 +18,34 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-29] feat: 페이지 등록 정보 팝업 드래그 이동 및 여백 축소
+
+- **이유**: "페이지 등록 정보" 다이얼로그도 위치 선택 팝업처럼 화면 안에서 옮길 수 있어야 한다는 요청, 그리고 다이얼로그 내부 섹션/요소 간 여백이 너무 넓어 좁혀달라는 요청
+- **위치**: `client/components/editor/editor-modal-properties.vue`
+- **내용**:
+  - 원래 `.dialog-header`가 `v-card` 바깥의 형제 요소라 드래그 시 함께 움직일 수 없었음 → `v-card` 안으로 이동시키고 타이틀 바에 mousedown 드래그 핸들러 추가 (page-selector와 동일한 패턴, 드래그 시작 시 너비를 같이 고정해 커지는 문제 방지)
+  - 각 섹션 `v-card-text`의 `pt-5`/`pb-5`(20px) → `pt-2`/`pb-2`(8px), 라벨 하단 `pb-5`→`pb-1`, 그리드 거터 `grid-list-lg`→`grid-list-md`, 태그 칩 그룹 `mb-5`→`mb-2`로 축소
+
+### [2026-08-29] feat: "본문작성을 문서로" 업로드 코너 추가 (1단계 - UI/업로드 골격)
+
+- **이유**: 기존에 갖고 있던 문서(hwp/pdf/doc/docx/txt/md)를 업로드해서 위키 본문으로 바로 등록하고 싶다는 요청. hwp/구.doc는 신뢰할 만한 Node 파싱 라이브러리가 없거나 아예 없어 실제 파싱은 다음 단계로 미루고, 이번엔 업로드→반영까지의 전체 흐름만 구현
+- **위치**:
+  - `client/components/editor/editor-modal-properties.vue` : "경로/파일명"과 "분류" 사이에 문서 업로드 섹션, 하단에 내용 있을 때 "하단에 추가"/"덮어쓰기" 선택하는 확인 다이얼로그 추가 (업로드만으로 자동 반영되지 않고 확인 버튼을 눌러야 본문에 반영됨)
+  - `server/controllers/upload.js` : 새 라우트 `POST /u/parse-document` - 확장자 화이트리스트(hwp/pdf/doc/docx/txt/md) 검증, write:pages/manage:pages/manage:system 권한 체크, 현재는 실제 파싱 없이 안내 문구를 본문 콘텐츠로 반환 (다음 단계에서 mammoth/pdf-parse/hwp.js 등으로 교체 예정)
+- **내용**: `editor/content` 스토어 값을 직접 갱신하고 `overwriteEditorContent` 이벤트로 CKEditor에 반영 (기존 충돌 해결 기능과 동일한 메커니즘 재사용)
+
+### [2026-08-29] fix: 페이지 선택 팝업 드래그 시 너비 확대 버그 수정, 파일명 입력창 Enter로 선택
+
+- **이유**: 드래그로 팝업을 옮기면 `position: fixed` 전환 시 Vuetify가 부여하던 max-width(850px) 제약이 풀려 화면 거의 전체로 커지는 버그 발견. 파일명 입력 후 마우스로 "선택" 버튼을 눌러야 해서 불편하다는 요청
+- **위치**: `client/components/common/page-selector.vue`
+- **내용**: 드래그 시작 시점의 실제 너비(`getBoundingClientRect().width`)를 `dragWidth`로 저장해 `position: fixed` 전환 후에도 고정폭 유지. 파일명 `v-text-field`에 `@keydown.enter='isValidPath && open()'` 추가해 Enter로 "선택" 버튼과 동일하게 동작
+
+### [2026-08-29] feat: 페이지 선택 팝업 타이틀 바 드래그 이동 기능 추가
+
+- **이유**: 새 문서 만들기/이동/링크 삽입 시 뜨는 위치 선택 팝업이 화면 중앙에 고정돼 있어, 팝업에 가려진 뒤쪽 내용을 보기 위해 자유롭게 옮길 수 있어야 한다는 요청
+- **위치**: `client/components/common/page-selector.vue`
+- **내용**: 팝업 상단 타이틀 바(`.dialog-header`)에 mousedown 드래그 핸들러 추가. 드래그 시작 시 카드를 `position: fixed`로 전환해 마우스 이동에 따라 좌표를 갱신하고, 팝업을 껐다 켜면 원래 중앙 위치로 리셋됨. 이 컴포넌트는 새 문서 만들기/이동/링크 삽입 세 곳에서 공유되므로 모두 동일하게 적용됨
+
 ### [2026-08-29] feat: 사이드바 최근 문서 위젯에 "more..." 더보기 페이지 추가, 최근 댓글 문서 위젯 신설
 
 - **이유**: 사이드바 "최근 생성된 문서"/"최근 수정된 문서"가 5개까지만 보여서 전체 목록을 볼 방법이 없었음. "최근 댓글 문서" 위젯도 요청됨
@@ -134,3 +162,4 @@ Fork: https://github.com/joahani3/wiki
 - **이유**: LDAP로 로그인할 때마다 LDAP의 displayName이 DB에 저장된 이름을 강제로 덮어써서, 관리자가 Wiki 내에서 이름을 수정해도 다음 로그인 시 원래대로 돌아오는 문제. 내부 아바타(`pictureUrl=internal`)도 LDAP 재로그인 시 덮어쓰이는 문제
 - **위치**: `server/models/users.js` (`processProfile` 함수)
 - **내용**: `name: displayName` → `name: user.name || displayName` 으로 변경. `pictureUrl: user.pictureUrl === 'internal' ? 'internal' : pictureUrl` 으로 내부 아바타 보호. 기존 이름/아바타가 있으면 유지하고, 없을 때(신규 가입)만 LDAP 값을 사용
+
