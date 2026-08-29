@@ -126,22 +126,76 @@ export default {
 
       const btn = document.createElement('button')
       btn.type = 'button'
-      btn.className = 'ck ck-button ck-off editor-fn-toolbar-btn'
+      btn.className = 'ck ck-button ck-button_with-text ck-off editor-fn-toolbar-btn'
       btn.setAttribute('tabindex', '-1')
-      btn.title = '주석 삽입'
+      btn.title = '각주 삽입'
 
       const label = document.createElement('span')
       label.className = 'ck ck-button__label'
-      label.textContent = '주석 삽입'
+      label.textContent = '각주'
+      const sup = document.createElement('sup')
+      sup.className = 'editor-fn-toolbar-btn-sup'
+      const icon = document.createElement('i')
+      icon.className = 'mdi mdi-asterisk'
+      sup.appendChild(icon)
+      label.appendChild(sup)
       btn.appendChild(label)
 
       btn.addEventListener('click', () => {
         this.openFootnoteDialog()
       })
 
-      // ck-toolbar__items 밖(형제)에 붙여서 CKEditor의 자동 그룹핑(overflow) 계산에서 제외되어
-      // 항상 보이도록 함
-      toolbarEl.appendChild(btn)
+      this.positionFootnoteButton(toolbarEl, btn)
+    },
+    // To-do List 버튼 뒤에 (구분선 - 각주 - 구분선) 순으로 끼워 넣어
+    // Special Characters 버튼 바로 앞에 오도록 위치시킴.
+    // 버튼 라벨은 언어(locale)마다 번역되어 다르므로, 같은 커맨드의 ButtonView를
+    // componentFactory로 하나 더 만들어 그 label 값으로 실제 DOM 버튼을 찾는다.
+    positionFootnoteButton (toolbarEl, btn) {
+      const itemsEl = toolbarEl.querySelector('.ck-toolbar__items')
+      if (!itemsEl) {
+        toolbarEl.appendChild(btn)
+        return
+      }
+
+      const labelOf = name => {
+        if (!this.editor.ui.componentFactory.has(name)) return null
+        const view = this.editor.ui.componentFactory.create(name)
+        view.render()
+        const text = view.label
+        view.destroy()
+        return text
+      }
+
+      const findByLabel = text => {
+        if (!text) return null
+        return Array.from(itemsEl.children).find(el => {
+          const labelEl = el.querySelector && el.querySelector('.ck-button__label')
+          return labelEl && labelEl.textContent === text
+        })
+      }
+
+      const todoBtn = findByLabel(labelOf('todoList'))
+      const specialCharsBtn = findByLabel(labelOf('specialCharacters'))
+
+      const separator = () => {
+        const sep = document.createElement('span')
+        sep.className = 'ck ck-toolbar__separator'
+        return sep
+      }
+
+      if (todoBtn) {
+        const ref = todoBtn.nextSibling
+        itemsEl.insertBefore(separator(), ref)
+        itemsEl.insertBefore(btn, ref)
+        itemsEl.insertBefore(separator(), ref)
+      } else if (specialCharsBtn) {
+        itemsEl.insertBefore(separator(), specialCharsBtn)
+        itemsEl.insertBefore(btn, specialCharsBtn)
+        itemsEl.insertBefore(separator(), specialCharsBtn)
+      } else {
+        toolbarEl.appendChild(btn)
+      }
     },
     insertFootnote () {
       const content = this.footnoteText.trim()
@@ -164,7 +218,7 @@ export default {
         if (n === 1) {
           const sep = writer.createElement('paragraph')
           writer.insert(sep, writer.createPositionAt(root, 'end'))
-          writer.insertText('── 주석 ──', writer.createPositionAt(sep, 0))
+          writer.insertText('── 각주 ──', writer.createPositionAt(sep, 0))
         }
 
         // Add footnote content paragraph at document end
@@ -401,9 +455,18 @@ $editor-height-mobile: calc(100vh - 56px - 16px);
   }
 
   .editor-fn-toolbar-btn {
-    margin-left: auto;
     flex-shrink: 0;
     white-space: nowrap;
+
+    &-sup {
+      display: inline-flex;
+      vertical-align: super;
+      margin-left: 1px;
+
+      .mdi {
+        font-size: .7em;
+      }
+    }
   }
 
   > .ck-editor__editable {

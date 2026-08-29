@@ -44,6 +44,11 @@ COPY --chown=node:node ./dev/build/config.yml ./config.yml
 COPY --chown=node:node ./package.json ./package.json
 COPY --chown=node:node ./LICENSE ./LICENSE
 
+# 소스 트리의 package.json은 "dev": true로 커밋되어 있음(진행 중인 개발 브랜치 표시).
+# 릴리즈 이미지에서는 여기서만 false로 뒤집어 "DEVELOPMENT VERSION" 배너/원격 텔레메트리 억제 로직이
+# 실제 배포판에서 잘못 발동하지 않도록 함 (소스 자체는 건드리지 않음).
+RUN sed -i 's/"dev": true/"dev": false/' ./package.json
+
 USER node
 
 VOLUME ["/wiki/data/content"]

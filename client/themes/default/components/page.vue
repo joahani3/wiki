@@ -30,6 +30,19 @@
         )
         v-icon mdi-menu
 
+    v-card.wiki-fn-popup(
+      v-if='footnotePopup.visible'
+      :style='{ top: footnotePopup.top + "px", left: footnotePopup.left + "px" }'
+      )
+      .wiki-fn-popup-header(@mousedown='startFootnoteDrag')
+        span.wiki-fn-popup-title 각주 {{ footnotePopup.n }}
+        v-spacer
+        v-btn(icon, x-small, @click='footnoteEdit')
+          v-icon(small) mdi-pencil
+        v-btn(icon, x-small, @click='footnotePopup.visible = false')
+          v-icon(small) mdi-close
+      v-card-text.wiki-fn-popup-body {{ footnotePopup.content }}
+
     v-main(ref='content')
       template(v-if='path !== `home`')
         v-toolbar(:color='$vuetify.theme.dark ? `grey darken-4-d3` : `grey lighten-3`', flat, dense, v-if='$vuetify.breakpoint.smAndUp')
@@ -558,7 +571,14 @@ export default {
           }
         }
       },
-      winWidth: 0
+      winWidth: 0,
+      footnotePopup: {
+        visible: false,
+        n: null,
+        content: '',
+        top: 120,
+        left: 120
+      }
     }
   },
   computed: {
@@ -711,11 +731,11 @@ export default {
 
       // Hide separator and footnote paragraphs
       allParas.forEach(p => {
-        if (/^──\s*주석\s*──/.test(p.textContent.trim())) p.style.display = 'none'
+        if (/^──\s*(주석|각주)\s*──/.test(p.textContent.trim())) p.style.display = 'none'
       })
       Object.values(fnMap).forEach(({ el }) => { el.style.display = 'none' })
 
-      // Make superscript refs clickable
+      // Make superscript refs clickable -> open draggable popup layer
       supEls.forEach(el => {
         const m = el.textContent.trim().match(/^\[(\d+)\]$/)
         if (!m || !fnMap[m[1]]) return
@@ -724,8 +744,7 @@ export default {
         el.setAttribute('title', fnMap[n].content)
         el.classList.add('wiki-fn-ref')
         el.addEventListener('click', () => {
-          const target = container.querySelector(`#fn-${n}`)
-          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+          this.openFootnotePopup(n, fnMap[n].content, el)
         })
       })
 
@@ -735,7 +754,7 @@ export default {
 
       const title = document.createElement('div')
       title.className = 'wiki-fn-section-title'
-      title.textContent = '주석'
+      title.textContent = '각주'
       section.appendChild(title)
 
       const ol = document.createElement('ol')
@@ -763,6 +782,41 @@ export default {
         })
       section.appendChild(ol)
       container.appendChild(section)
+    },
+    openFootnotePopup (n, content, anchorEl) {
+      this.footnotePopup.n = n
+      this.footnotePopup.content = content
+
+      const rect = anchorEl.getBoundingClientRect()
+      const popupWidth = 320
+      const popupHeight = 160
+      const left = Math.min(Math.max(rect.left, 8), Math.max(window.innerWidth - popupWidth - 8, 8))
+      const top = Math.min(Math.max(rect.bottom + 8, 8), Math.max(window.innerHeight - popupHeight - 8, 8))
+      this.footnotePopup.left = left
+      this.footnotePopup.top = top
+      this.footnotePopup.visible = true
+    },
+    startFootnoteDrag (ev) {
+      ev.preventDefault()
+      const startX = ev.clientX
+      const startY = ev.clientY
+      const startLeft = this.footnotePopup.left
+      const startTop = this.footnotePopup.top
+
+      const onMove = moveEv => {
+        this.footnotePopup.left = startLeft + (moveEv.clientX - startX)
+        this.footnotePopup.top = startTop + (moveEv.clientY - startY)
+      }
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    footnoteEdit () {
+      this.footnotePopup.visible = false
+      this.pageEdit()
     },
     async fetchRecentPages () {
       try {
@@ -941,6 +995,42 @@ export default {
     .wiki-fn-item { color: #aaa; }
     .wiki-fn-back { color: #90caf9; }
   }
+}
+
+.wiki-fn-popup {
+  position: fixed;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  max-height: 320px;
+  z-index: 20;
+  display: flex;
+  flex-flow: column nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,.25);
+
+  .wiki-fn-popup-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 6px 6px 14px;
+    cursor: move;
+    user-select: none;
+    border-bottom: 1px solid rgba(0,0,0,.12);
+  }
+
+  .wiki-fn-popup-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .wiki-fn-popup-body {
+    overflow-y: auto;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+}
+
+.theme--dark .wiki-fn-popup .wiki-fn-popup-header {
+  border-bottom-color: rgba(255,255,255,.12);
 }
 
 .page-header-section {
