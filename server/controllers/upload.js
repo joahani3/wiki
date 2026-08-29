@@ -5,6 +5,7 @@ const multer = require('multer')
 const path = require('path')
 const sanitize = require('sanitize-filename')
 const { convertPdfToHtml } = require('../helpers/pdfConvert')
+const { convertOfficeToHtml, convertLegacyDocToHtml, convertLegacyXlsToHtml } = require('../helpers/officeConvert')
 
 /* global WIKI */
 
@@ -105,9 +106,10 @@ router.get('/u', async (req, res, next) => {
   })
 })
 
-// 본문 등록용 문서 업로드 (hwp/pdf/doc/docx/txt/md)
-// hwp/hwpx는 실제 변환 구현됨. pdf/doc/docx/txt/md는 다음 단계에서 구현 예정 (현재는 안내 문구만 반환)
-const docBodyAllowedExt = ['.hwp', '.hwpx', '.pdf', '.doc', '.docx', '.txt', '.md']
+// 본문 등록용 문서 업로드 (hwp/hwpx/pdf/doc/docx/xls/xlsx/pptx/txt/md)
+// txt/md만 아직 안내 문구만 반환 (다음 단계에서 구현 예정). 나머지는 모두 실제 변환됨.
+// 구버전 바이너리 .ppt는 지원 가능한 순수 JS 라이브러리가 없어 제외됨.
+const docBodyAllowedExt = ['.hwp', '.hwpx', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx', '.txt', '.md']
 
 // Buffer/Uint8Array -> 정확한 범위의 ArrayBuffer (Buffer는 풀링된 더 큰 ArrayBuffer를 공유할 수 있어 슬라이스 필요)
 function toArrayBuffer (buf) {
@@ -118,7 +120,7 @@ function toArrayBuffer (buf) {
 async function convertHwpFamilyToHtml (buf, ext) {
   const hwpxjs = await import('@ssabrojs/hwpxjs')
   const {
-    default: HwpxReader,
+    HwpxReader,
     hwpToHwpx,
     HwpxEncryptedDocumentError,
     InvalidHwpxFormatError,
@@ -192,17 +194,23 @@ router.post('/u/parse-document', (req, res, next) => {
   try {
     if (ext === '.hwp' || ext === '.hwpx') {
       content = await convertHwpFamilyToHtml(req.file.buffer, ext)
-      if (!content || !content.trim()) {
-        content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
-      }
     } else if (ext === '.pdf') {
       content = await convertPdfToHtml({ buffer: req.file.buffer, originalName, user: req.user })
-      if (!content || !content.trim()) {
-        content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
-      }
+    } else if (ext === '.docx' || ext === '.pptx') {
+      content = await convertOfficeToHtml(req.file.buffer, ext.slice(1))
+    } else if (ext === '.doc') {
+      content = await convertLegacyDocToHtml(req.file.buffer)
+    } else if (ext === '.xlsx') {
+      content = await convertOfficeToHtml(req.file.buffer, 'xlsx')
+    } else if (ext === '.xls') {
+      content = convertLegacyXlsToHtml(req.file.buffer)
     } else {
-      // TODO: 다음 단계에서 doc/docx/txt/md 변환 구현
+      // TODO: 다음 단계에서 txt/md 변환 구현
       content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 업로드됨 — 이 형식의 파싱 기능은 다음 업데이트에서 제공될 예정입니다.</p></blockquote>`
+    }
+
+    if (!content || !content.trim()) {
+      content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
     }
   } catch (err) {
     WIKI.logger.warn(`문서 변환 실패 (${originalName}): ${err.message}`)

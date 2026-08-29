@@ -18,7 +18,15 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
-### [2026-08-29] feat: PDF 업로드 → 텍스트/OCR 추출 + 페이지 스크린샷 본문 등록 구현
+### [2026-08-29] feat: doc/docx/xls/xlsx/pptx 문서→본문 변환 구현, hwp 변환 오류 수정
+
+- **이유**: hwp/hwpx/pdf에 이어 doc, xlsx, ppt 계열도 처리해달라는 요청. 구현 직후 실기기 테스트에서 hwp 업로드 시 "HwpxReader is not a constructor" 오류 발견
+- **위치**:
+  - `server/helpers/officeConvert.js` (신규): `officeparser`로 docx/pptx/xlsx를 표/서식 보존된 HTML로 변환, `word-extractor`로 구버전 바이너리 .doc는 텍스트만 추출, `xlsx`(SheetJS)로 구버전 바이너리 .xls는 시트별 HTML 표로 변환
+  - `server/controllers/upload.js` : 위 함수들 연결, 허용 확장자에 `.xls .xlsx .pptx` 추가. 구버전 바이너리 `.ppt`는 지원 가능한 순수 JS 라이브러리가 없어 제외
+  - `server/controllers/upload.js` (버그 수정) : hwp/hwpx 변환에서 `@ssabrojs/hwpxjs`를 동적 import 후 `{ default: HwpxReader }`로 구조분해했는데, 해당 패키지의 `index.js`가 `export * from`으로만 재수출해서 default export가 전달되지 않아 `HwpxReader`가 `undefined`였던 문제. `{ HwpxReader }`(named export)로 수정
+  - `package.json`/`yarn.lock` : `officeparser`, `word-extractor`, `xlsx` 추가
+- **내용**: doc/xls는 표/서식이 원본 포맷 자체의 구조 정보가 빈약해 텍스트/표 정도만 나옴. 이미지는 hwp/hwpx와 동일하게 이번 단계에서 제외
 
 - **이유**: hwp/hwpx에 이어 PDF도 실제 변환 구현 요청. 텍스트 PDF와 OCR이 필요한 스캔본 PDF가 섞여 있고, 대부분 한글이며 표/이미지가 많다는 요구사항. 표 구조 복원과 개별 이미지 추출은 진짜 어려운 문제라 페이지 전체를 스크린샷으로 함께 첨부하는 방식으로 합의
 - **위치**:

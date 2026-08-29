@@ -67,8 +67,8 @@
                 v-flex(xs12)
                   v-file-input(
                     outlined
-                    label='문서 업로드 (hwp, hwpx, pdf, doc, docx, txt, md)'
-                    accept='.hwp,.hwpx,.pdf,.doc,.docx,.txt,.md'
+                    label='문서 업로드 (hwp, hwpx, pdf, doc, docx, xls, xlsx, pptx, txt, md)'
+                    accept='.hwp,.hwpx,.pdf,.doc,.docx,.xls,.xlsx,.pptx,.txt,.md'
                     prepend-icon='mdi-file-document-outline'
                     v-model='uploadDocFile'
                     :disabled='isUploadingDoc'
