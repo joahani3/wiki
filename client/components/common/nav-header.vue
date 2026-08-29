@@ -416,16 +416,18 @@ export default {
       window.location.assign(`/e/${this.locale}/${this.path}`)
     },
     async pageEditProperties () {
-      // 문서 보기 화면에는 스케줄링/스크립트/스타일 필드가 애초에 로드돼 있지 않으므로
-      // 팝업을 열기 전에 pages.single로 채워넣음 (제목/설명/태그/공개여부는 이미 정확함)
+      // 문서 보기 화면에는 스크립트/스타일 필드가 애초에 로드돼 있지 않으므로
+      // 팝업을 열기 전에 pages.single로 채워넣음 (제목/설명/태그/공개여부는 이미 정확함).
+      // publishStartDate/publishEndDate는 여기서 일부러 안 가져옴: 예약 발행이 없는
+      // 페이지는 DB에 빈 문자열로 저장돼 있는데, 서버의 Date 스칼라가 value.toISOString()을
+      // 무조건 호출해서 빈 문자열을 만나면 그대로 에러가 나 쿼리 전체가 실패함(진짜 원인).
+      // 그래서 view-mode-only 팝업에서는 스케줄링 탭 자체를 숨기고 이 필드는 건드리지 않음
       try {
         const resp = await this.$apollo.query({
           query: gql`
             query ($id: Int!) {
               pages {
                 single(id: $id) {
-                  publishStartDate
-                  publishEndDate
                   scriptCss
                   scriptJs
                 }
@@ -436,8 +438,6 @@ export default {
           fetchPolicy: 'network-only'
         })
         const page = _.get(resp, 'data.pages.single', {})
-        this.$store.set('page/publishStartDate', page.publishStartDate || '')
-        this.$store.set('page/publishEndDate', page.publishEndDate || '')
         this.$store.set('page/scriptCss', page.scriptCss || '')
         this.$store.set('page/scriptJs', page.scriptJs || '')
       } catch (err) {

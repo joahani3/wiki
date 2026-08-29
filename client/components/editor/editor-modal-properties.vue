@@ -21,7 +21,7 @@
           span {{ $t('common:actions.ok') }}
       v-tabs(color='white', background-color='blue darken-1', dark, centered, v-model='currentTab')
         v-tab {{$t('editor:props.info')}}
-        v-tab {{$t('editor:props.scheduling')}}
+        v-tab(:disabled='viewModeOnly') {{$t('editor:props.scheduling')}}
         v-tab(:disabled='!hasScriptPermission') {{$t('editor:props.scripts')}}
         //- v-tab(disabled) {{$t('editor:props.social')}}
         v-tab(:disabled='!hasStylePermission') {{$t('editor:props.styles')}}
@@ -54,7 +54,7 @@
                     label='경로/파일명'
                     :append-icon='viewModeOnly ? undefined : "mdi-folder-search"'
                     v-model='path'
-                    :hint='viewModeOnly ? "경로 변경은 상단 메뉴의 \'이동\' 기능을 이용하세요." : $t(`editor:props.pathHint`)'
+                    :hint='pathHint'
                     persistent-hint
                     :readonly='viewModeOnly'
                     @click:append='showPathSelector'
@@ -373,6 +373,12 @@ export default {
       }
       const avgPerItem = this.docElapsedSeconds / this.docProgressCurrent
       return Math.max(0, Math.round(avgPerItem * (this.docProgressTotal - this.docProgressCurrent)))
+    },
+    pathHint () {
+      if (this.viewModeOnly) {
+        return "경로 변경은 상단 메뉴의 '이동' 기능을 이용하세요."
+      }
+      return this.$t('editor:props.pathHint')
     }
   },
   watch: {
