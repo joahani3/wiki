@@ -18,6 +18,25 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-29] feat: PDF 업로드 → 텍스트/OCR 추출 + 페이지 스크린샷 본문 등록 구현
+
+- **이유**: hwp/hwpx에 이어 PDF도 실제 변환 구현 요청. 텍스트 PDF와 OCR이 필요한 스캔본 PDF가 섞여 있고, 대부분 한글이며 표/이미지가 많다는 요구사항. 표 구조 복원과 개별 이미지 추출은 진짜 어려운 문제라 페이지 전체를 스크린샷으로 함께 첨부하는 방식으로 합의
+- **위치**:
+  - `server/helpers/pdfConvert.js` (신규): `pdfjs-dist`로 페이지별 텍스트 레이어 추출(좌표 기반 줄 재구성), `poppler-utils`(`pdftoppm`)로 페이지를 PNG로 래스터화, 텍스트가 거의 없으면(10자 미만) `tesseract-ocr`(kor+eng)로 OCR, 페이지 PNG는 `WIKI.models.assets.upload`로 정식 자산 업로드 후 본문에 텍스트+스크린샷을 페이지별로 나열한 HTML 반환
+  - `server/controllers/upload.js` : `/u/parse-document`에 `.pdf` 분기 연결
+  - `dev/build/Dockerfile` : 릴리즈 이미지에 `poppler-utils tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-kor tesseract-ocr-data-osd` apk 패키지 추가 (네이티브 컴파일 불필요)
+  - `package.json`/`yarn.lock` : `pdfjs-dist` 추가 (ESM 전용이라 동적 import로 사용)
+- **내용**: 암호화/손상된 PDF는 한글 에러 메시지로 안내. 페이지 이미지 업로드 권한(`write:assets`) 없으면 처음부터 명확히 실패. 표는 구조 복원 없이 텍스트로만, 대신 페이지 스크린샷을 나란히 첨부해 원본 레이아웃 확인 가능
+
+### [2026-08-29] feat: hwp/hwpx 실제 문서→본문 변환 구현
+
+- **이유**: "본문작성을 문서로" 업로드 기능의 1단계(UI/업로드 골격)에 이어, hwp/hwpx부터 실제 파싱을 구현해달라는 요청
+- **위치**:
+  - `server/controllers/upload.js` : `@ssabrojs/hwpxjs`(HWP 5.0/CFB 및 HWPX/OWPML 모두 지원하는 순수 JS 라이브러리, HWP 파서는 rhwp(Rust)를 TS로 포팅한 것)로 `.hwpx`는 바로, `.hwp`는 `hwpToHwpx` 변환 후 `extractHtml`로 표/스타일 보존한 HTML 추출. 암호화/미지원 버전/손상 파일은 라이브러리 전용 에러 클래스를 잡아 한글 메시지로 안내
+  - `client/components/editor/editor-modal-properties.vue` : 업로드 UX를 "선택 즉시 서버 요청 + 재확인 팝업"에서 "파일 선택 시 파일명만 표시 → 다이얼로그 상단 확인 버튼을 눌러야 업로드/변환 진행 + 진행바 표시"로 변경 (재확인 팝업 제거)
+  - `package.json`/`yarn.lock` : `@ssabrojs/hwpxjs` 추가 (ESM 전용, 동적 import로 사용)
+- **내용**: 이미지는 이번 단계에서 제외(`renderImages: false`), 이미지 자산 연동은 다음 단계로. pdf/doc/docx/txt/md는 아직 안내 문구만 반환하는 이전 단계 상태 유지
+
 ### [2026-08-29] feat: 페이지 등록 정보 팝업 드래그 이동 및 여백 축소
 
 - **이유**: "페이지 등록 정보" 다이얼로그도 위치 선택 팝업처럼 화면 안에서 옮길 수 있어야 한다는 요청, 그리고 다이얼로그 내부 섹션/요소 간 여백이 너무 넓어 좁혀달라는 요청

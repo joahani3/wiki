@@ -4,6 +4,7 @@ const _ = require('lodash')
 const multer = require('multer')
 const path = require('path')
 const sanitize = require('sanitize-filename')
+const { convertPdfToHtml } = require('../helpers/pdfConvert')
 
 /* global WIKI */
 
@@ -104,8 +105,59 @@ router.get('/u', async (req, res, next) => {
   })
 })
 
-// 본문 등록용 문서 업로드 (hwp/pdf/doc/docx/txt/md) - 1단계: 업로드만 받고 실제 파싱은 다음 단계에서 구현
-const docBodyAllowedExt = ['.hwp', '.pdf', '.doc', '.docx', '.txt', '.md']
+// 본문 등록용 문서 업로드 (hwp/pdf/doc/docx/txt/md)
+// hwp/hwpx는 실제 변환 구현됨. pdf/doc/docx/txt/md는 다음 단계에서 구현 예정 (현재는 안내 문구만 반환)
+const docBodyAllowedExt = ['.hwp', '.hwpx', '.pdf', '.doc', '.docx', '.txt', '.md']
+
+// Buffer/Uint8Array -> 정확한 범위의 ArrayBuffer (Buffer는 풀링된 더 큰 ArrayBuffer를 공유할 수 있어 슬라이스 필요)
+function toArrayBuffer (buf) {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+}
+
+// hwp/hwpx -> 본문 HTML 변환 (@ssabrojs/hwpxjs, ESM 전용이라 동적 import 사용)
+async function convertHwpFamilyToHtml (buf, ext) {
+  const hwpxjs = await import('@ssabrojs/hwpxjs')
+  const {
+    default: HwpxReader,
+    hwpToHwpx,
+    HwpxEncryptedDocumentError,
+    InvalidHwpxFormatError,
+    HwpEncryptedError,
+    HwpUnsupportedError,
+    HwpInvalidFormatError
+  } = hwpxjs
+
+  try {
+    let hwpxArrayBuffer
+    if (ext === '.hwpx') {
+      hwpxArrayBuffer = toArrayBuffer(buf)
+    } else {
+      // .hwp -> hwpx 바이트로 변환 후 HTML 추출 (표/글자 모양 등 보존)
+      const hwpxBytes = await hwpToHwpx(new Uint8Array(buf))
+      hwpxArrayBuffer = toArrayBuffer(hwpxBytes)
+    }
+
+    const reader = new HwpxReader()
+    await reader.loadFromArrayBuffer(hwpxArrayBuffer)
+    return await reader.extractHtml({
+      paragraphTag: 'p',
+      renderTables: true,
+      renderStyles: true,
+      renderImages: false, // 이미지 자산 연동은 다음 단계
+      embedImages: false
+    })
+  } catch (err) {
+    if (err instanceof HwpxEncryptedDocumentError || err instanceof HwpEncryptedError) {
+      throw new Error('암호화된 문서는 지원하지 않습니다.')
+    } else if (err instanceof InvalidHwpxFormatError || err instanceof HwpInvalidFormatError) {
+      throw new Error('올바른 hwp/hwpx 파일이 아닙니다.')
+    } else if (err instanceof HwpUnsupportedError) {
+      throw new Error('지원하지 않는 hwp 문서 버전입니다.')
+    }
+    throw err
+  }
+}
+
 router.post('/u/parse-document', (req, res, next) => {
   multer({
     storage: multer.memoryStorage(),
@@ -136,12 +188,34 @@ router.post('/u/parse-document', (req, res, next) => {
     })
   }
 
-  // TODO: 다음 단계에서 확장자별로 실제 파싱(mammoth/pdf-parse/hwp.js 등)을 붙여
-  // req.file.buffer로부터 실제 변환된 HTML/마크다운을 content로 채운다.
+  let content
+  try {
+    if (ext === '.hwp' || ext === '.hwpx') {
+      content = await convertHwpFamilyToHtml(req.file.buffer, ext)
+      if (!content || !content.trim()) {
+        content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
+      }
+    } else if (ext === '.pdf') {
+      content = await convertPdfToHtml({ buffer: req.file.buffer, originalName, user: req.user })
+      if (!content || !content.trim()) {
+        content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
+      }
+    } else {
+      // TODO: 다음 단계에서 doc/docx/txt/md 변환 구현
+      content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 업로드됨 — 이 형식의 파싱 기능은 다음 업데이트에서 제공될 예정입니다.</p></blockquote>`
+    }
+  } catch (err) {
+    WIKI.logger.warn(`문서 변환 실패 (${originalName}): ${err.message}`)
+    return res.status(422).json({
+      succeeded: false,
+      message: `문서 변환에 실패했습니다: ${err.message}`
+    })
+  }
+
   res.json({
     succeeded: true,
     filename: originalName,
-    content: `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 업로드됨 — 문서 파싱 기능은 다음 업데이트에서 제공될 예정입니다.</p></blockquote>`
+    content
   })
 })
 

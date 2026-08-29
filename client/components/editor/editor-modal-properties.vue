@@ -13,7 +13,9 @@
         v-btn.mx-0(
           outlined
           dark
-          @click.native='close'
+          :loading='isUploadingDoc'
+          :disabled='isUploadingDoc'
+          @click.native='confirmAndClose'
           )
           v-icon(left) mdi-check
           span {{ $t('common:actions.ok') }}
@@ -65,16 +67,17 @@
                 v-flex(xs12)
                   v-file-input(
                     outlined
-                    label='문서 업로드 (hwp, pdf, doc, docx, txt, md)'
-                    accept='.hwp,.pdf,.doc,.docx,.txt,.md'
+                    label='문서 업로드 (hwp, hwpx, pdf, doc, docx, txt, md)'
+                    accept='.hwp,.hwpx,.pdf,.doc,.docx,.txt,.md'
                     prepend-icon='mdi-file-document-outline'
                     v-model='uploadDocFile'
-                    :loading='isUploadingDoc'
                     :disabled='isUploadingDoc'
-                    hint='업로드한 문서의 내용을 본문으로 등록합니다.'
+                    :hint='uploadDocFile ? `상단의 확인 버튼을 누르면 업로드 및 본문 등록이 진행됩니다.` : `업로드한 문서의 내용을 본문으로 등록합니다.`'
                     persistent-hint
-                    @change='onDocFileSelected'
+                    show-size
                     )
+                  v-progress-linear(v-if='isUploadingDoc', indeterminate, color='primary', height='6', rounded)
+                  .caption.grey--text.mt-1(v-if='isUploadingDoc') 업로드 및 변환 처리 중...
           v-divider
           v-card-text.grey.pt-2.pb-2(:class='$vuetify.theme.dark ? `darken-3-d3` : `lighten-5`')
             .overline.pb-1 {{$t('editor:props.categorization')}}
@@ -251,22 +254,6 @@
             .caption {{$t('editor:props.cssHint')}}
 
     page-selector(:mode='pageSelectorMode', v-model='pageSelectorShown', :path='path', :locale='locale', :open-handler='setPath')
-
-    v-dialog(v-model='docChoiceShown', max-width='450px')
-      v-card
-        v-card-title.text-subtitle-1 문서 업로드
-        v-card-text
-          | "{{ pendingDocFilename }}"의 내용을 본문에 반영할까요?
-        v-card-actions
-          v-spacer
-          v-btn(text, @click='docChoiceShown = false') 취소
-          template(v-if='hasExistingContent')
-            v-btn(text, color='primary', @click='applyDocContent(`append`)') 하단에 추가
-            v-btn(color='primary', depressed, @click='applyDocContent(`overwrite`)') 덮어쓰기
-          template(v-else)
-            v-btn(color='primary', depressed, @click='applyDocContent(`overwrite`)')
-              v-icon(left, small) mdi-check
-              | 확인
 </template>
 
 <script>
@@ -300,9 +287,6 @@ export default {
       dragWidth: null,
       uploadDocFile: null,
       isUploadingDoc: false,
-      docChoiceShown: false,
-      pendingDocContent: '',
-      pendingDocFilename: '',
       namespaces: siteLangs.length ? siteLangs.map(ns => ns.code) : [siteConfig.lang],
       newTag: '',
       newTagSuggestions: [],
@@ -347,9 +331,6 @@ export default {
     scriptCss: sync('page/scriptCss'),
     hasScriptPermission: get('page/effectivePermissions@pages.script'),
     hasStylePermission: get('page/effectivePermissions@pages.style'),
-    hasExistingContent () {
-      return !_.isEmpty(_.trim(this.$store.get('editor/content')))
-    },
     pageSelectorMode () {
       return (this.mode === 'create') ? 'create' : 'move'
     }
@@ -402,6 +383,15 @@ export default {
     close() {
       this.isShown = false
     },
+    async confirmAndClose () {
+      if (this.uploadDocFile) {
+        const succeeded = await this.processDocumentUpload()
+        if (!succeeded) {
+          return
+        }
+      }
+      this.close()
+    },
     startDrag (ev) {
       const cardEl = this.$refs.propsCard.$el
       const rect = cardEl.getBoundingClientRect()
@@ -434,15 +424,12 @@ export default {
       this.locale = locale
       this.path = path
     },
-    async onDocFileSelected (file) {
-      if (!file) {
-        return
-      }
+    async processDocumentUpload () {
       this.isUploadingDoc = true
       try {
         const jwtToken = Cookies.get('jwt')
         const formData = new FormData()
-        formData.append('document', file, file.name)
+        formData.append('document', this.uploadDocFile, this.uploadDocFile.name)
 
         const resp = await fetch('/u/parse-document', {
           method: 'POST',
@@ -454,36 +441,26 @@ export default {
           throw new Error(_.get(data, 'message', '업로드에 실패했습니다.'))
         }
 
-        this.pendingDocContent = data.content
-        this.pendingDocFilename = data.filename
-        this.docChoiceShown = true
+        const currentContent = this.$store.get('editor/content')
+        this.$store.set('editor/content', _.isEmpty(_.trim(currentContent)) ? data.content : `${currentContent}\n\n${data.content}`)
+        this.$root.$emit('overwriteEditorContent')
+        this.$store.commit('showNotification', {
+          message: '문서 내용이 본문에 반영되었습니다.',
+          style: 'success',
+          icon: 'check'
+        })
+        this.uploadDocFile = null
+        return true
       } catch (err) {
         this.$store.commit('showNotification', {
           message: `문서 업로드 실패: ${err.message}`,
           style: 'error',
           icon: 'error'
         })
+        return false
       } finally {
         this.isUploadingDoc = false
-        this.uploadDocFile = null
       }
-    },
-    applyDocContent (action) {
-      const currentContent = this.$store.get('editor/content')
-      if (action === 'append') {
-        this.$store.set('editor/content', _.isEmpty(_.trim(currentContent)) ? this.pendingDocContent : `${currentContent}\n\n${this.pendingDocContent}`)
-      } else {
-        this.$store.set('editor/content', this.pendingDocContent)
-      }
-      this.$root.$emit('overwriteEditorContent')
-      this.$store.commit('showNotification', {
-        message: '문서 내용이 본문에 반영되었습니다.',
-        style: 'success',
-        icon: 'check'
-      })
-      this.docChoiceShown = false
-      this.pendingDocContent = ''
-      this.pendingDocFilename = ''
     },
     loadEditor(ref, mode) {
       this.cm = CodeMirror.fromTextArea(ref, {
