@@ -1,10 +1,6 @@
 <template lang='pug'>
   .editor-ckeditor
     div(ref='toolbarContainer')
-    .editor-fn-bar
-      v-btn(x-small, text, color='grey darken-1', @click='openFootnoteDialog')
-        v-icon(x-small, left) mdi-comment-plus-outline
-        | 주석 삽입
     div.contents(ref='editor')
     v-system-bar.editor-ckeditor-sysbar(dark, status, color='grey darken-3')
       .caption.editor-ckeditor-sysbar-locale {{locale.toUpperCase()}}
@@ -124,6 +120,29 @@ export default {
       this.footnoteText = ''
       this.footnoteDialog = true
     },
+    injectFootnoteButton () {
+      const toolbarEl = this.editor.ui.view.toolbar.element
+      if (!toolbarEl) return
+
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'ck ck-button ck-off editor-fn-toolbar-btn'
+      btn.setAttribute('tabindex', '-1')
+      btn.title = '주석 삽입'
+
+      const label = document.createElement('span')
+      label.className = 'ck ck-button__label'
+      label.textContent = '주석 삽입'
+      btn.appendChild(label)
+
+      btn.addEventListener('click', () => {
+        this.openFootnoteDialog()
+      })
+
+      // ck-toolbar__items 밖(형제)에 붙여서 CKEditor의 자동 그룹핑(overflow) 계산에서 제외되어
+      // 항상 보이도록 함
+      toolbarEl.appendChild(btn)
+    },
     insertFootnote () {
       const content = this.footnoteText.trim()
       if (!content || !this.editor) return
@@ -135,8 +154,8 @@ export default {
       const n = nums.length > 0 ? Math.max(...nums) + 1 : 1
 
       this.editor.model.change(writer => {
-        // Insert [N] superscript at cursor position
-        const position = this.editor.model.document.selection.getFirstPosition()
+        // Insert [N] superscript at the end of the selection (or cursor position if nothing selected)
+        const position = this.editor.model.document.selection.getLastPosition()
         writer.insertText(`[${n}]`, { superscript: true }, position)
 
         const root = this.editor.model.document.getRoot()
@@ -261,6 +280,7 @@ export default {
       }
     })
     this.$refs.toolbarContainer.appendChild(this.editor.ui.view.toolbar.element)
+    this.injectFootnoteButton()
 
     // Drag & drop / paste from local file system
     const editableEl = this.editor.ui.view.editable.element
@@ -369,17 +389,6 @@ $editor-height-mobile: calc(100vh - 56px - 16px);
     }
   }
 
-  &-fn-bar {
-    background-color: #efefef;
-    border-bottom: 1px solid #ddd;
-    padding: 2px 8px;
-
-    @at-root .theme--dark & {
-      background-color: mc('grey', '850');
-      border-bottom-color: mc('grey', '700');
-    }
-  }
-
   .ck.ck-toolbar {
     border: none;
     justify-content: center;
@@ -389,6 +398,12 @@ $editor-height-mobile: calc(100vh - 56px - 16px);
 
   .ck.ck-toolbar__items {
     justify-content: center;
+  }
+
+  .editor-fn-toolbar-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   > .ck-editor__editable {

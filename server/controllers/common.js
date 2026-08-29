@@ -416,7 +416,12 @@ router.get('/_userav/:uid', async (req, res, next) => {
  * Upload User Avatar
  */
 router.post('/_userav', (req, res, next) => {
-  multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 } }).single('avatar')(req, res, next)
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 } }).single('avatar')(req, res, err => {
+    if (err) {
+      return res.status(400).json({ succeeded: false, message: err.code === 'LIMIT_FILE_SIZE' ? '이미지 크기는 최대 1MB까지 가능합니다.' : err.message })
+    }
+    next()
+  })
 }, async (req, res, next) => {
   if (!req.user || !req.user.id) {
     return res.status(401).json({ succeeded: false, message: 'Unauthorized' })

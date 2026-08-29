@@ -162,6 +162,31 @@
                         v-icon(:color='$vuetify.theme.dark ? `blue-grey lighten-1` : `blue-grey darken-2`', dense) mdi-comment-plus
                     span {{$t('common:comments.newComment')}}
 
+            v-card.page-shortcuts-card.mb-5(flat)
+              v-toolbar(:color='$vuetify.theme.dark ? `grey darken-4-d3` : `grey lighten-3`', flat, dense)
+                v-spacer
+                //- v-tooltip(bottom)
+                //-   template(v-slot:activator='{ on }')
+                //-     v-btn(icon, tile, v-on='on', :aria-label='$t(`common:page.bookmark`)'): v-icon(color='grey') mdi-bookmark
+                //-   span {{$t('common:page.bookmark')}}
+                v-menu(offset-y, bottom, min-width='300')
+                  template(v-slot:activator='{ on: menu }')
+                    v-tooltip(bottom)
+                      template(v-slot:activator='{ on: tooltip }')
+                        v-btn(icon, tile, v-on='{ ...menu, ...tooltip }', :aria-label='$t(`common:page.share`)'): v-icon(color='grey') mdi-share-variant
+                      span {{$t('common:page.share')}}
+                  social-sharing(
+                    :url='pageUrl'
+                    :title='title'
+                    :description='description'
+                  )
+                v-tooltip(bottom)
+                  template(v-slot:activator='{ on }')
+                    v-btn(icon, tile, v-on='on', @click='print', :aria-label='$t(`common:page.printFormat`)')
+                      v-icon(:color='printView ? `primary` : `grey`') mdi-printer
+                  span {{$t('common:page.printFormat')}}
+                v-spacer
+
             v-card.page-author-card.mb-5
               .pa-5
                 .overline.indigo--text.d-flex(:class='$vuetify.theme.dark ? `text--lighten-3` : ``')
@@ -225,31 +250,6 @@
             //-         hover
             //-       )
             //-       .caption.grey--text 5 votes
-
-            v-card.page-shortcuts-card(flat)
-              v-toolbar(:color='$vuetify.theme.dark ? `grey darken-4-d3` : `grey lighten-3`', flat, dense)
-                v-spacer
-                //- v-tooltip(bottom)
-                //-   template(v-slot:activator='{ on }')
-                //-     v-btn(icon, tile, v-on='on', :aria-label='$t(`common:page.bookmark`)'): v-icon(color='grey') mdi-bookmark
-                //-   span {{$t('common:page.bookmark')}}
-                v-menu(offset-y, bottom, min-width='300')
-                  template(v-slot:activator='{ on: menu }')
-                    v-tooltip(bottom)
-                      template(v-slot:activator='{ on: tooltip }')
-                        v-btn(icon, tile, v-on='{ ...menu, ...tooltip }', :aria-label='$t(`common:page.share`)'): v-icon(color='grey') mdi-share-variant
-                      span {{$t('common:page.share')}}
-                  social-sharing(
-                    :url='pageUrl'
-                    :title='title'
-                    :description='description'
-                  )
-                v-tooltip(bottom)
-                  template(v-slot:activator='{ on }')
-                    v-btn(icon, tile, v-on='on', @click='print', :aria-label='$t(`common:page.printFormat`)')
-                      v-icon(:color='printView ? `primary` : `grey`') mdi-printer
-                  span {{$t('common:page.printFormat')}}
-                v-spacer
 
           v-flex.page-col-content(
             xs12
@@ -767,9 +767,9 @@ export default {
     async fetchRecentPages () {
       try {
         const RECENT_QUERY = gql`
-          query ($orderBy: PageOrderBy!) {
+          query ($orderBy: PageOrderBy!, $limit: Int!) {
             pages {
-              list(limit: 5, orderBy: $orderBy, orderByDirection: DESC) {
+              list(limit: $limit, orderBy: $orderBy, orderByDirection: DESC) {
                 id
                 path
                 title
@@ -780,11 +780,14 @@ export default {
           }
         `
         const [created, updated] = await Promise.all([
-          this.$apollo.query({ query: RECENT_QUERY, variables: { orderBy: 'CREATED' }, fetchPolicy: 'network-only' }),
-          this.$apollo.query({ query: RECENT_QUERY, variables: { orderBy: 'UPDATED' }, fetchPolicy: 'network-only' })
+          this.$apollo.query({ query: RECENT_QUERY, variables: { orderBy: 'CREATED', limit: 5 }, fetchPolicy: 'network-only' }),
+          this.$apollo.query({ query: RECENT_QUERY, variables: { orderBy: 'UPDATED', limit: 20 }, fetchPolicy: 'network-only' })
         ])
         this.recentCreated = _.get(created, 'data.pages.list', [])
+        // 생성 이후 실제로 수정된 적 없는 문서(updatedAt === createdAt)는 '최근 수정' 목록에서 제외
         this.recentUpdated = _.get(updated, 'data.pages.list', [])
+          .filter(page => page.updatedAt !== page.createdAt)
+          .slice(0, 5)
       } catch (err) {
         // 권한 없으면 조용히 무시
       }

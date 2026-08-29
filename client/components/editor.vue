@@ -204,6 +204,10 @@ export default {
     currentEditor(newValue, oldValue) {
       if (newValue !== '' && this.mode === 'create') {
         _.delay(() => {
+          if (!this.$store.get('page/title') || this.$store.get('page/title') === 'Untitled Page') {
+            const pathParts = this.$store.get('page/path').split('/')
+            this.$store.set('page/title', pathParts[pathParts.length - 1])
+          }
           this.dialogProps = true
         }, 500)
       }
