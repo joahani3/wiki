@@ -18,6 +18,15 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-08-30] feat: txt/md 문서 변환 구현, 원본 파일 자산 저장 및 다운로드 링크 추가
+
+- **이유**: "본문작성을 문서로" 기능의 마지막 남은 형식(txt/md)까지 구현 요청. 이어서 "업로드한 원본 파일이 서버에 남아있냐"는 질문에 확인해보니 지금까지는 변환 후 원본이 전혀 보존되지 않고 있었음(PDF도 페이지 스크린샷만 자산으로 남고 원본 PDF는 폐기) - 원본을 정식 자산으로 저장하고 본문 상단에 다운로드 링크를 넣어달라는 요청
+- **위치**:
+  - `server/helpers/officeConvert.js` : `convertTxtToHtml`(BOM 감지, UTF-8 실패 시 CP949/EUC-KR로 재시도), `convertMarkdownToHtml`(Wiki.js 자체 페이지 렌더러 markdown-core와 동일한 markdown-it 옵션 + 표/체크박스/각주/속성 플러그인 재사용, 새 의존성 없이 기존 설치된 패키지만 사용) 추가
+  - `server/controllers/upload.js` : `.txt`/`.md` 분기 연결. `uploadOriginalDocument()` 신규 - 변환 성공 후 원본 파일 버퍼를 `WIKI.models.assets.upload`로 정식 자산 저장(권한 없으면 조용히 건너뛰고 변환된 본문은 그대로 제공), 성공 시 본문 맨 위에 `📎 원본 파일: [파일명]` 다운로드 링크 삽입
+  - `package.json`/`yarn.lock` : `iconv-lite` 추가 (한글 텍스트 파일 인코딩 감지용, 유일한 신규 의존성)
+- **내용**: 이제 hwp/hwpx/pdf/doc/docx/xls/xlsx/pptx/txt/md 전부 실제 변환되고, 전부 원본 다운로드 링크가 함께 붙음. 구버전 바이너리 .ppt만 여전히 미지원(라이브러리 부재)
+
 ### [2026-08-30] feat: PDF 업로드 실시간 진행률/렌더링 대기 표시, 한글 텍스트 깨짐 자동 감지+OCR 대체
 
 - **이유**: 문서 업로드 크기 제한(5MB)에 걸려 서버가 HTML 에러 페이지를 반환해 "Unexpected token '<'" 오류가 나던 문제, 변환은 다 끝났는데 본문에 실제로 반영되는(CKEditor 렌더링) 동안 진행바가 멈춘 것처럼 보이던 문제, 그리고 텍스트 레이어가 있는 PDF인데도(ToUnicode CMap이 없는 폰트) 한글이 완전히 깨진 문자로 추출되던 문제를 순서대로 발견하고 수정

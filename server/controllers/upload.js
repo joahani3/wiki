@@ -3,9 +3,11 @@ const router = express.Router()
 const _ = require('lodash')
 const multer = require('multer')
 const path = require('path')
+const os = require('os')
+const fs = require('fs-extra')
 const sanitize = require('sanitize-filename')
 const { convertPdfToHtml } = require('../helpers/pdfConvert')
-const { convertOfficeToHtml, convertLegacyDocToHtml, convertLegacyXlsToHtml } = require('../helpers/officeConvert')
+const { convertOfficeToHtml, convertLegacyDocToHtml, convertLegacyXlsToHtml, convertTxtToHtml, convertMarkdownToHtml } = require('../helpers/officeConvert')
 
 /* global WIKI */
 
@@ -106,8 +108,7 @@ router.get('/u', async (req, res, next) => {
   })
 })
 
-// 본문 등록용 문서 업로드 (hwp/hwpx/pdf/doc/docx/xls/xlsx/pptx/txt/md)
-// txt/md만 아직 안내 문구만 반환 (다음 단계에서 구현 예정). 나머지는 모두 실제 변환됨.
+// 본문 등록용 문서 업로드 (hwp/hwpx/pdf/doc/docx/xls/xlsx/pptx/txt/md) - 전부 실제 변환됨.
 // 구버전 바이너리 .ppt는 지원 가능한 순수 JS 라이브러리가 없어 제외됨.
 const docBodyAllowedExt = ['.hwp', '.hwpx', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx', '.txt', '.md']
 
@@ -162,6 +163,33 @@ async function convertHwpFamilyToHtml (buf, ext) {
 
 // 문서 업로드는 일반 자산 업로드보다 큰 파일(특히 스캔본 PDF)이 많아 별도의 넉넉한 상한을 둠
 const DOC_UPLOAD_MAX_SIZE = 50 * 1024 * 1024 // 50MB
+
+// 변환 대상 원본 파일 자체도 정식 Wiki.js 자산으로 저장 (원본 다운로드 링크 제공용).
+// 변환 품질에 한계가 있을 수 있어(hwp/doc 등 텍스트만 추출, PDF 표 미복원 등)
+// 사용자가 언제든 원본을 내려받을 수 있게 함
+async function uploadOriginalDocument ({ buffer, originalName, mimetype, user }) {
+  if (!WIKI.auth.checkAccess(user, ['write:assets'], { path: originalName })) {
+    throw new Error('원본 파일을 저장할 권한이 없습니다.')
+  }
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wiki-doc-src-'))
+  try {
+    const tmpPath = path.join(tmpDir, originalName)
+    await fs.writeFile(tmpPath, buffer)
+    await WIKI.models.assets.upload({
+      originalname: originalName,
+      mimetype: mimetype || 'application/octet-stream',
+      size: buffer.length,
+      path: tmpPath,
+      folderId: null,
+      assetPath: originalName,
+      mode: 'upload',
+      user
+    })
+  } finally {
+    await fs.remove(tmpDir)
+  }
+  return `/${encodeURI(originalName)}`
+}
 
 router.post('/u/parse-document', (req, res, next) => {
   multer({
@@ -226,13 +254,27 @@ router.post('/u/parse-document', (req, res, next) => {
     } else if (ext === '.xls') {
       onProgress(0, null, '문서 변환 중...')
       content = convertLegacyXlsToHtml(req.file.buffer)
+    } else if (ext === '.txt') {
+      onProgress(0, null, '문서 변환 중...')
+      content = convertTxtToHtml(req.file.buffer)
+    } else if (ext === '.md') {
+      onProgress(0, null, '문서 변환 중...')
+      content = convertMarkdownToHtml(req.file.buffer)
     } else {
-      // TODO: 다음 단계에서 txt/md 변환 구현
       content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 업로드됨 — 이 형식의 파싱 기능은 다음 업데이트에서 제공될 예정입니다.</p></blockquote>`
     }
 
     if (!content || !content.trim()) {
       content = `<blockquote><p>📄 <strong>${_.escape(originalName)}</strong> 문서에서 추출된 내용이 없습니다.</p></blockquote>`
+    }
+
+    onProgress(0, null, '원본 파일 저장 중...')
+    try {
+      const originalFileUrl = await uploadOriginalDocument({ buffer: req.file.buffer, originalName, mimetype: req.file.mimetype, user: req.user })
+      content = `<p>📎 원본 파일: <a href="${originalFileUrl}" download="${_.escape(originalName)}">${_.escape(originalName)}</a></p>${content}`
+    } catch (err) {
+      // 원본 저장에 실패해도 변환된 본문은 그대로 제공 (다운로드 링크만 빠짐)
+      WIKI.logger.warn(`원본 파일 저장 실패 (${originalName}): ${err.message}`)
     }
 
     send({ type: 'complete', succeeded: true, filename: originalName, content })
