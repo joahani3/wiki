@@ -234,13 +234,15 @@ export default {
             img += ` class="align-${opts.align}"`
           }
           img += ` />`
-          this.insertAtCursor({
-            content: img
+          this.insertAfter({
+            content: img,
+            newLine: true
           })
           break
         case 'BINARY':
-          this.insertAtCursor({
-            content: `<a href="${opts.path}" title="${opts.text}">${opts.text}</a>`
+          this.insertAfter({
+            content: `<a href="${opts.path}" title="${opts.text}">${opts.text}</a>`,
+            newLine: true
           })
           break
       }

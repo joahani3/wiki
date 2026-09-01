@@ -11,9 +11,17 @@
       :temporary='$vuetify.breakpoint.smAndDown'
       v-model='navShown'
       :right='$vuetify.rtl'
+      :mini-variant='navMode === `TREE` && navCollapsed && $vuetify.breakpoint.mdAndUp'
+      :mini-variant-width='36'
       )
       vue-scroll(:ops='scrollStyle')
-        nav-sidebar(:color='$vuetify.theme.dark ? `grey darken-4-d4` : `primary`', :items='sidebarDecoded', :nav-mode='navMode')
+        nav-sidebar(
+          :color='$vuetify.theme.dark ? `grey darken-4-d4` : `primary`'
+          :items='sidebarDecoded'
+          :nav-mode='navMode'
+          :collapsed='navMode === `TREE` && navCollapsed && $vuetify.breakpoint.mdAndUp'
+          @toggle-collapse='toggleNavCollapse'
+        )
 
     v-fab-transition(v-if='navMode !== `NONE`')
       v-btn(
@@ -401,6 +409,56 @@
                 span {{$t('common:comments.title')}}
               .comments-main
                 slot(name='comments')
+    //- 비로그인 사용자 LDAP 로그인 팝업
+    v-dialog(v-model='loginDialog', max-width='400', persistent, :overlay-opacity='0.7', overlay-color='blue darken-4')
+      v-card.ldap-login-card
+        v-card-title.justify-center.pt-5.pb-3
+          v-icon.mr-2(color='primary', size='28') mdi-account-lock
+          span.primary--text 로그인 LDAP(ID/PW)
+        v-divider
+        v-card-text.pt-4
+          v-alert.mb-3(v-if='loginError', type='error', dense, text, outlined) {{ loginError }}
+          v-text-field(
+            v-model='loginUsername'
+            label='아이디'
+            outlined
+            dense
+            prepend-inner-icon='mdi-account-outline'
+            autofocus
+            hide-details='auto'
+            :disabled='loginLoading'
+            @keydown.enter='$refs.loginPwdRef.focus()'
+          )
+          v-text-field.mt-3(
+            ref='loginPwdRef'
+            v-model='loginPassword'
+            label='비밀번호'
+            outlined
+            dense
+            prepend-inner-icon='mdi-lock-outline'
+            :type='loginHidePassword ? "password" : "text"'
+            :append-icon='loginHidePassword ? "mdi-eye-off" : "mdi-eye"'
+            @click:append='loginHidePassword = !loginHidePassword'
+            hide-details='auto'
+            :disabled='loginLoading'
+            @keydown.enter='loginSubmit'
+          )
+        v-card-actions.pb-4.px-4
+          v-btn.flex-grow-1(
+            color='primary'
+            large
+            @click='loginSubmit'
+            :loading='loginLoading'
+            depressed
+          )
+            v-icon(left) mdi-login
+            span 로그인
+    loader(v-model='editLoading', title='편집 화면 불러오는 중...' subtitle='잠시만 기다려 주세요.')
+    v-overlay(v-model='downloadLoading', z-index='210', opacity='0.75')
+      .text-center
+        v-progress-circular(indeterminate, color='white', size='60', width='4')
+        .white--text.subtitle-1.mt-4 다운로드 준비 중...
+        .white--text.caption.mt-2.grey--text.text--lighten-2 파일을 받는 중입니다. 잠시만 기다려 주세요.
     nav-footer
     notify
     search-results
@@ -424,6 +482,7 @@
 </template>
 
 <script>
+import Cookies from 'js-cookie'
 import { StatusIndicator } from 'vue-status-indicator'
 import Tabset from './tabset.vue'
 import NavSidebar from './nav-sidebar.vue'
@@ -566,7 +625,16 @@ export default {
     return {
       locales: siteLangs,
       navShown: false,
+      navCollapsed: false,
       navExpanded: false,
+      editLoading: false,
+      downloadLoading: false,
+      loginDialog: false,
+      loginUsername: '',
+      loginPassword: '',
+      loginHidePassword: true,
+      loginLoading: false,
+      loginError: '',
       upBtnShown: false,
       pageEditFab: false,
       recentCreated: [],
@@ -686,6 +754,10 @@ export default {
     this.$store.set('page/mode', 'view')
   },
   mounted () {
+    if (!this.isAuthenticated) {
+      this.loginDialog = true
+    }
+
     if (this.$vuetify.theme.dark) {
       this.scrollStyle.bar.background = '#424242'
     }
@@ -697,6 +769,12 @@ export default {
     window.addEventListener('resize', _.debounce(() => {
       this.handleSideNavVisibility()
     }, 500))
+
+    // -> TREE 메뉴 모드는 기본적으로 접힌 상태로 시작 (localStorage에 preference 저장)
+    if (this.navMode === 'TREE') {
+      const saved = window.localStorage.getItem('navTreeCollapsed')
+      this.navCollapsed = saved !== 'false'
+    }
 
     // -> Highlight Code Blocks
     Prism.highlightAllUnder(this.$refs.container)
@@ -732,8 +810,16 @@ export default {
 
       this.processFootnotes()
 
+      // -> 다운로드 링크 클릭 시 로딩 오버레이 표시
+      this.$refs.container.addEventListener('click', this.onDownloadLinkClick)
+
       window.boot.notify('page-ready')
     })
+  },
+  beforeDestroy () {
+    if (this.$refs.container) {
+      this.$refs.container.removeEventListener('click', this.onDownloadLinkClick)
+    }
   },
   methods: {
     processFootnotes () {
@@ -889,6 +975,10 @@ export default {
     toggleNavigation () {
       this.navOpen = !this.navOpen
     },
+    toggleNavCollapse () {
+      this.navCollapsed = !this.navCollapsed
+      window.localStorage.setItem('navTreeCollapsed', String(this.navCollapsed))
+    },
     upBtnScroll () {
       const scrollOffset = window.pageYOffset || document.documentElement.scrollTop
       this.upBtnShown = scrollOffset > window.innerHeight * 0.33
@@ -904,6 +994,7 @@ export default {
       }
     },
     pageEdit () {
+      this.editLoading = true
       this.$root.$emit('pageEdit')
     },
     pageHistory () {
@@ -938,6 +1029,83 @@ export default {
       if (focusNewComment) {
         document.querySelector('#discussion-new').focus()
       }
+    },
+    onDownloadLinkClick (ev) {
+      const link = ev.target.closest('a')
+      if (!link || !link.href) return
+      if (!link.hasAttribute('download') && !this.looksLikeAssetLink(link.href)) return
+
+      this.downloadLoading = true
+
+      const hide = () => {
+        this.downloadLoading = false
+        clearTimeout(fallback)
+      }
+      // 브라우저 다운로드 다이얼로그가 뜨면 window가 blur → 잠깐 후 숨김
+      window.addEventListener('blur', () => setTimeout(hide, 600), { once: true })
+      // 최대 15초 후 자동 해제 (대용량 파일 등 blur 이벤트 미발생 대비)
+      const fallback = setTimeout(hide, 15000)
+    },
+    async loginSubmit () {
+      this.loginError = ''
+      if (!this.loginUsername) {
+        this.loginError = '아이디를 입력해주세요.'
+        return
+      }
+      if (!this.loginPassword) {
+        this.loginError = '비밀번호를 입력해주세요.'
+        return
+      }
+      this.loginLoading = true
+      try {
+        const resp = await this.$apollo.mutate({
+          mutation: gql`
+            mutation($username: String!, $password: String!, $strategy: String!) {
+              authentication {
+                login(username: $username, password: $password, strategy: $strategy) {
+                  responseResult { succeeded message }
+                  jwt
+                  mustChangePwd
+                  mustProvideTFA
+                  mustSetupTFA
+                  redirect
+                }
+              }
+            }
+          `,
+          variables: {
+            username: this.loginUsername,
+            password: this.loginPassword,
+            strategy: 'ldap'
+          }
+        })
+        const respObj = _.get(resp, 'data.authentication.login', {})
+        if (respObj.responseResult.succeeded) {
+          if (respObj.mustProvideTFA || respObj.mustSetupTFA || respObj.mustChangePwd) {
+            window.location.assign('/login')
+          } else {
+            Cookies.set('jwt', respObj.jwt, { expires: 365, secure: window.location.protocol === 'https:' })
+            window.location.reload()
+          }
+        } else {
+          this.loginError = respObj.responseResult.message || '로그인에 실패했습니다.'
+          this.loginLoading = false
+        }
+      } catch (err) {
+        this.loginError = err.message || '로그인 중 오류가 발생했습니다.'
+        this.loginLoading = false
+      }
+    },
+    looksLikeAssetLink (href) {
+      try {
+        const url = new URL(href, window.location.origin)
+        if (url.origin !== window.location.origin) return false
+        const ext = url.pathname.split('.').pop().toLowerCase()
+        return ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+                'hwp', 'hwpx', 'zip', 'rar', '7z', 'tar', 'gz',
+                'mp4', 'avi', 'mov', 'mkv', 'mp3', 'wav', 'flac',
+                'exe', 'dmg', 'apk', 'bin', 'iso'].includes(ext)
+      } catch (e) { return false }
     }
   }
 }

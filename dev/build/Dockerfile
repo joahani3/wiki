@@ -13,6 +13,8 @@ WORKDIR /wiki
 COPY ./package.json ./package.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./patches ./patches
+# wiki-ckeditor5: file: 로컬 패키지 - yarn install 전에 복사해야 함
+COPY ./wiki-ckeditor5 ./wiki-ckeditor5
 
 RUN yarn cache clean
 RUN yarn --frozen-lockfile --non-interactive

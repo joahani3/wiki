@@ -1,0 +1,5 @@
+{
+  "name": "wiki-ckeditor5",
+  "version": "19.0.1-wiki.3",
+  "main": "build/ckeditor.js"
+}

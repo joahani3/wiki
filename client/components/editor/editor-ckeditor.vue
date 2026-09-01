@@ -44,8 +44,8 @@
 import _ from 'lodash'
 import Cookies from 'js-cookie'
 import { get, sync } from 'vuex-pathify'
-import DecoupledEditor from '@requarks/ckeditor5'
-// import DecoupledEditor from '../../../../wiki-ckeditor5/build/ckeditor'
+// import DecoupledEditor from '@requarks/ckeditor5'
+import DecoupledEditor from 'wiki-ckeditor5'
 import EditorConflict from './ckeditor/conflict.vue'
 import { html as beautify } from 'js-beautify/js/lib/beautifier.min.js'
 

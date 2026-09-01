@@ -455,13 +455,15 @@ export default {
       switch (opts.kind) {
         case 'IMAGE':
           let img = `image::${opts.path}[${opts.text}]`
-          this.insertAtCursor({
-            content: img
+          this.insertAfter({
+            content: img,
+            newLine: true
           })
           break
         case 'BINARY':
-          this.insertAtCursor({
-            content: `link:${opts.path}[${opts.text}]`
+          this.insertAfter({
+            content: `link:${opts.path}[${opts.text}]`,
+            newLine: true
           })
           break
         case 'DIAGRAM':

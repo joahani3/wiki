@@ -6,10 +6,32 @@ const path = require('path')
 const os = require('os')
 const fs = require('fs-extra')
 const sanitize = require('sanitize-filename')
+const assetHelper = require('../helpers/asset')
 const { convertPdfToHtml } = require('../helpers/pdfConvert')
 const { convertOfficeToHtml, convertLegacyDocToHtml, convertLegacyXlsToHtml, convertTxtToHtml, convertMarkdownToHtml } = require('../helpers/officeConvert')
 
 /* global WIKI */
+
+/**
+ * 동일 폴더에 같은 이름 파일이 있으면 _1, _2, ... 를 붙여 고유 이름을 반환
+ * @param {string} filename - 원본 파일명 (sanitize 완료 후)
+ * @param {number|null} folderId
+ * @param {string|null} folderPathPrefix - 폴더 slug 경로 (이미 계산된 경우)
+ * @returns {{ filename: string, assetPath: string }}
+ */
+async function getUniqueAssetName (filename, folderId, folderPathPrefix) {
+  const fileInfo = path.parse(filename)
+  let candidate = filename
+  let counter = 1
+  while (true) {
+    const assetPath = folderPathPrefix ? `${folderPathPrefix}/${candidate}` : candidate
+    const hash = assetHelper.generateHash(assetPath)
+    const existing = await WIKI.models.assets.query().where({ hash, folderId: folderId || null }).first()
+    if (!existing) return { filename: candidate, assetPath }
+    candidate = `${fileInfo.name}_${counter}${fileInfo.ext}`
+    counter++
+  }
+}
 
 /**
  * Upload files
@@ -82,8 +104,12 @@ router.post('/u', (req, res, next) => {
   // Sanitize filename
   fileMeta.originalname = sanitize(fileMeta.originalname.toLowerCase().replace(/[\s,;#]+/g, '_'))
 
+  // 동일 폴더에 같은 이름이 있으면 _1, _2, ... 를 붙여 중복 방지
+  const folderPrefix = folderId ? hierarchy.map(h => h.slug).join('/') : null
+  const { filename: uniqueName, assetPath } = await getUniqueAssetName(fileMeta.originalname, folderId, folderPrefix)
+  fileMeta.originalname = uniqueName
+
   // Check if user can upload at path
-  const assetPath = (folderId) ? hierarchy.map(h => h.slug).join('/') + `/${fileMeta.originalname}` : fileMeta.originalname
   if (!WIKI.auth.checkAccess(req.user, ['write:assets'], { path: assetPath })) {
     return res.status(403).json({
       succeeded: false,
@@ -168,27 +194,30 @@ const DOC_UPLOAD_MAX_SIZE = 50 * 1024 * 1024 // 50MB
 // 변환 품질에 한계가 있을 수 있어(hwp/doc 등 텍스트만 추출, PDF 표 미복원 등)
 // 사용자가 언제든 원본을 내려받을 수 있게 함
 async function uploadOriginalDocument ({ buffer, originalName, mimetype, user }) {
-  if (!WIKI.auth.checkAccess(user, ['write:assets'], { path: originalName })) {
+  // 동일 이름 파일이 이미 있으면 _1, _2, ... 를 붙여 중복 방지
+  const { filename: uniqueName, assetPath } = await getUniqueAssetName(originalName, null, null)
+
+  if (!WIKI.auth.checkAccess(user, ['write:assets'], { path: assetPath })) {
     throw new Error('원본 파일을 저장할 권한이 없습니다.')
   }
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wiki-doc-src-'))
   try {
-    const tmpPath = path.join(tmpDir, originalName)
+    const tmpPath = path.join(tmpDir, uniqueName)
     await fs.writeFile(tmpPath, buffer)
     await WIKI.models.assets.upload({
-      originalname: originalName,
+      originalname: uniqueName,
       mimetype: mimetype || 'application/octet-stream',
       size: buffer.length,
       path: tmpPath,
       folderId: null,
-      assetPath: originalName,
+      assetPath,
       mode: 'upload',
       user
     })
   } finally {
     await fs.remove(tmpDir)
   }
-  return `/${encodeURI(originalName)}`
+  return `/${encodeURI(uniqueName)}`
 }
 
 router.post('/u/parse-document', (req, res, next) => {

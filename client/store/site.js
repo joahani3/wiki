@@ -16,7 +16,8 @@ const state = {
   searchIsLoading: false,
   searchRestrictLocale: false,
   searchRestrictPath: false,
-  printView: false
+  printView: false,
+  sidebarCurrentPath: ''
 }
 
 export default {

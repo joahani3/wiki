@@ -239,7 +239,7 @@
                 v-icon(color='grey') mdi-account-circle
             span {{$t('common:header.login')}}
 
-    page-selector(mode='create', v-model='newPageModal', :open-handler='pageNewCreate', :locale='locale')
+    page-selector(mode='create', v-model='newPageModal', :open-handler='pageNewCreate', :locale='locale', :path='newPagePath')
     page-selector(mode='move', v-model='movePageModal', :open-handler='pageMoveRename', :path='path', :locale='locale')
     page-selector(mode='create', v-model='duplicateOpts.modal', :open-handler='pageDuplicateHandle', :path='duplicateOpts.path', :locale='duplicateOpts.locale')
     page-delete(v-model='deletePageModal', v-if='path && path.length')
@@ -284,6 +284,7 @@ export default {
       searchIsShown: true,
       searchAdvMenuShown: false,
       newPageModal: false,
+      newPagePath: '새문서',
       movePageModal: false,
       convertPageModal: false,
       deletePageModal: false,
@@ -404,6 +405,8 @@ export default {
       this.$root.$emit('searchMove', dir)
     },
     pageNew () {
+      const folderPath = this.$store.get('site/sidebarCurrentPath')
+      this.newPagePath = folderPath ? `${folderPath}/새문서` : '새문서'
       this.newPageModal = true
     },
     pageNewCreate ({ path, locale }) {

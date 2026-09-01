@@ -829,13 +829,15 @@ export default {
           if (opts.align && opts.align !== '') {
             img += `{.align-${opts.align}}`
           }
-          this.insertAtCursor({
-            content: img
+          this.insertAfter({
+            content: img,
+            newLine: true
           })
           break
         case 'BINARY':
-          this.insertAtCursor({
-            content: `[${opts.text}](${opts.path})`
+          this.insertAfter({
+            content: `[${opts.text}](${opts.path})`,
+            newLine: true
           })
           break
         case 'DIAGRAM':

@@ -3,7 +3,7 @@
     .login(:style='`background-image: url(` + bgUrl + `);`')
       .login-sd
         .d-flex.mb-5
-          .login-logo
+          .login-logo(@click='onLogoClick', style='cursor:pointer;')
             v-avatar(tile, size='34')
               v-img(:src='logoUrl')
           .login-title
@@ -51,7 +51,7 @@
               hide-details
               ref='iptEmail'
               v-model='username'
-              :placeholder='isUsernameEmail ? $t(`auth:fields.email`) : $t(`auth:fields.username`)'
+              :placeholder='isUsernameEmail ? $t(`auth:fields.email`) : selectedStrategyKey === `ldap` ? `아이디` : $t(`auth:fields.username`)'
               :type='isUsernameEmail ? `email` : `text`'
               :autocomplete='isUsernameEmail ? `email` : `username`'
               light
@@ -276,6 +276,8 @@ export default {
   data () {
     return {
       error: false,
+      logoClickCount: 0,
+      showLocal: false,
       strategies: [],
       selectedStrategyKey: 'unselected',
       selectedStrategy: { key: 'unselected', strategy: { useForm: false, usernameType: 'email' } },
@@ -309,11 +311,10 @@ export default {
     logoUrl () { return siteConfig.logoUrl },
     filteredStrategies () {
       const qParams = new URLSearchParams(window.location.search)
-      if (this.hideLocal && !qParams.has('all')) {
+      if (!this.showLocal && !qParams.has('all')) {
         return _.reject(this.strategies, ['key', 'local'])
-      } else {
-        return this.strategies
       }
+      return this.strategies
     },
     isUsernameEmail () {
       return this.selectedStrategy.strategy.usernameType === `email`
@@ -553,6 +554,13 @@ export default {
     /**
      * SWITCH TO FORGOT PASSWORD SCREEN
      */
+    onLogoClick () {
+      this.logoClickCount++
+      if (this.logoClickCount >= 5) {
+        this.showLocal = true
+        this.logoClickCount = 0
+      }
+    },
     forgotPassword () {
       this.screen = 'forgot'
       this.$nextTick(() => {
