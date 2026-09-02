@@ -42,7 +42,7 @@
                 hoverable
                 )
                 template(slot='prepend', slot-scope='{ item, open, leaf }')
-                  v-icon mdi-{{ open ? 'folder-open' : 'folder' }}
+                  v-icon(color='amber darken-1') mdi-{{ open ? 'folder-open' : 'folder' }}
         v-flex(xs7)
           v-toolbar(color='blue darken-2', dark, dense, flat)
             .body-2 {{$t('common:pageSelector.pages')}}
