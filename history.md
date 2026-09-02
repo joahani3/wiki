@@ -18,6 +18,12 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-09-02] fix: 문서 보기 화면 로그인 팝업에서 로그인 실패하는 문제 수정 및 1순위 인증전략에 맞춰 폼 전환
+
+- **이유**: 비로그인 사용자에게 뜨는 로그인 팝업(`page.vue`)이 로그인 뮤테이션에 항상 `strategy: 'ldap'`을 하드코딩해서 보내 로그인 시도가 항상 실패했음. `/login` 페이지(`client/components/login.vue`)는 `authentication.activeStrategies` 쿼리로 얻은 전략 인스턴스의 실제 `key`를 사용하는데, 관리자 화면에서 인증 전략을 추가하면 그 `key`는 `uuid()`로 발급되고(`client/components/admin/admin-auth.vue`) 전략 타입 문자열('ldap')과 다름 - 서버(`server/models/users.js`의 `login()`)가 `WIKI.auth.strategies[opts.strategy]`를 찾지 못해 `AuthProviderInvalid`로 실패. 또한 팝업이 LDAP 폼으로 고정돼 있어, 사이트 설정상 1순위(order) 인증전략이 로컬(일반) 로그인인 경우에도 LDAP 폼이 떠서 실제 로그인 방식과 안 맞는 문제도 있었음
+- **위치**: `client/themes/default/components/page.vue`
+- **내용**: `fetchLoginStrategy()` 메서드 추가 - `activeStrategies(enabledOnly: true)`를 `order`로 정렬해 폼 로그인을 지원하는(`useForm`) 1순위 전략을 찾아 인스턴스 `key`/모듈 `key`/`usernameType`/`displayName`을 `loginStrategy`에 저장. 팝업이 뜰 때(`mounted`) 미리 조회해두고, `loginSubmit()`에서 하드코딩된 `'ldap'` 대신 `loginStrategy.key`를 로그인 뮤테이션에 사용. 팝업 제목/아이콘/아이디 입력란 라벨이 1순위 전략이 LDAP(`moduleKey === 'ldap'`)이면 "로그인 LDAP(ID/PW)"·아이디 입력으로, 그 외(로컬 등, `usernameType === 'email'`)면 일반 로그인 제목·이메일 주소 입력으로 자동 전환. 전략을 못 찾으면 로그인 시도 없이 안내 메시지 표시
+
 ### [2026-08-30] fix: "문서정보수정" 팝업 미표시 및 편집기 진입 시 빈 화면 버그 수정
 
 - **이유**: 직전 커밋(문서정보수정 팝업 추가)에서 실기기 테스트 결과 두 가지 문제 발견 - (1) 팝업 자체가 안 뜸 (2) "수정" 버튼으로 편집기 진입 시 빈 화면이 나옴

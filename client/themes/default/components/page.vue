@@ -409,18 +409,18 @@
                 span {{$t('common:comments.title')}}
               .comments-main
                 slot(name='comments')
-    //- 비로그인 사용자 LDAP 로그인 팝업
+    //- 비로그인 사용자 로그인 팝업 (1순위 인증전략이 LDAP면 LDAP 폼, 아니면 일반 로그인 폼)
     v-dialog(v-model='loginDialog', max-width='400', persistent, :overlay-opacity='0.7', overlay-color='blue darken-4')
       v-card.ldap-login-card
         v-card-title.justify-center.pt-5.pb-3
-          v-icon.mr-2(color='primary', size='28') mdi-account-lock
-          span.primary--text 로그인 LDAP(ID/PW)
+          v-icon.mr-2(color='primary', size='28') {{ loginStrategy.moduleKey === 'ldap' ? 'mdi-account-lock' : 'mdi-login-variant' }}
+          span.primary--text {{ loginStrategy.moduleKey === 'ldap' ? '로그인 LDAP(ID/PW)' : (loginStrategy.displayName || '로그인') }}
         v-divider
         v-card-text.pt-4
           v-alert.mb-3(v-if='loginError', type='error', dense, text, outlined) {{ loginError }}
           v-text-field(
             v-model='loginUsername'
-            label='아이디'
+            :label='loginUsernameLabel'
             outlined
             dense
             prepend-inner-icon='mdi-account-outline'
@@ -635,6 +635,7 @@ export default {
       loginHidePassword: true,
       loginLoading: false,
       loginError: '',
+      loginStrategy: { key: null, moduleKey: null, usernameType: null, displayName: '' },
       upBtnShown: false,
       pageEditFab: false,
       recentCreated: [],
@@ -729,6 +730,9 @@ export default {
       } else {
         return ''
       }
+    },
+    loginUsernameLabel () {
+      return this.loginStrategy.usernameType === 'email' ? '이메일 주소' : '아이디'
     }
   },
   created() {
@@ -756,6 +760,7 @@ export default {
   mounted () {
     if (!this.isAuthenticated) {
       this.loginDialog = true
+      this.fetchLoginStrategy()
     }
 
     if (this.$vuetify.theme.dark) {
@@ -1046,10 +1051,46 @@ export default {
       // 최대 15초 후 자동 해제 (대용량 파일 등 blur 이벤트 미발생 대비)
       const fallback = setTimeout(hide, 15000)
     },
+    /**
+     * 사이트에 등록된 인증 전략 중 1순위(order 최상단)이면서 폼 로그인을 지원하는 전략을 조회한다.
+     * LDAP가 1순위면 LDAP 폼, 로컬(일반)이 1순위면 일반 로그인 폼을 팝업에 표시하기 위함.
+     * 전략의 인스턴스 key는 관리자 화면에서 추가 시 uuid()로 발급되어 'ldap' 같은
+     * 전략 타입 문자열과 다르므로(client/components/admin/admin-auth.vue 참고),
+     * 로그인 뮤테이션에는 이 인스턴스 key(loginStrategy.key)를 보내야 한다.
+     */
+    async fetchLoginStrategy () {
+      try {
+        const resp = await this.$apollo.query({
+          query: gql`
+            {
+              authentication {
+                activeStrategies(enabledOnly: true) {
+                  key
+                  order
+                  displayName
+                  strategy { key useForm usernameType }
+                }
+              }
+            }
+          `,
+          fetchPolicy: 'network-only'
+        })
+        const strategies = _.sortBy(_.get(resp, 'data.authentication.activeStrategies', []), ['order'])
+        const topStrategy = _.find(strategies, s => _.get(s, 'strategy.useForm'))
+        this.loginStrategy = topStrategy ? {
+          key: topStrategy.key,
+          moduleKey: topStrategy.strategy.key,
+          usernameType: topStrategy.strategy.usernameType,
+          displayName: topStrategy.displayName
+        } : { key: null, moduleKey: null, usernameType: null, displayName: '' }
+      } catch (err) {
+        this.loginStrategy = { key: null, moduleKey: null, usernameType: null, displayName: '' }
+      }
+    },
     async loginSubmit () {
       this.loginError = ''
       if (!this.loginUsername) {
-        this.loginError = '아이디를 입력해주세요.'
+        this.loginError = `${this.loginUsernameLabel}을(를) 입력해주세요.`
         return
       }
       if (!this.loginPassword) {
@@ -1057,6 +1098,14 @@ export default {
         return
       }
       this.loginLoading = true
+      if (!this.loginStrategy.key) {
+        await this.fetchLoginStrategy()
+      }
+      if (!this.loginStrategy.key) {
+        this.loginError = '로그인 설정을 찾을 수 없습니다. 관리자에게 문의해주세요.'
+        this.loginLoading = false
+        return
+      }
       try {
         const resp = await this.$apollo.mutate({
           mutation: gql`
@@ -1076,7 +1125,7 @@ export default {
           variables: {
             username: this.loginUsername,
             password: this.loginPassword,
-            strategy: 'ldap'
+            strategy: this.loginStrategy.key
           }
         })
         const respObj = _.get(resp, 'data.authentication.login', {})
