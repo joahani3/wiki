@@ -409,9 +409,46 @@
                 span {{$t('common:comments.title')}}
               .comments-main
                 slot(name='comments')
-    //- 비로그인 사용자 로그인 팝업 (1순위 인증전략이 LDAP면 LDAP 폼, 아니면 일반 로그인 폼)
+    //- 비로그인 사용자 팝업: 기본은 별명 입력(IP 단위 저장, 로그인 없이 쓰기/수정 가능),
+    //- '관리자 로그인'을 누르면 기존 로그인 폼(1순위 인증전략이 LDAP면 LDAP 폼, 아니면 일반 로그인 폼)
     v-dialog(v-model='loginDialog', max-width='400', persistent, :overlay-opacity='0.7', overlay-color='blue darken-4')
-      v-card.ldap-login-card
+      v-card.ldap-login-card(v-if='loginMode === "nickname"')
+        v-card-title.justify-center.pt-5.pb-3
+          v-icon.mr-2(color='primary', size='28') mdi-account-edit-outline
+          span.primary--text 별명 입력
+        v-divider
+        v-card-text.pt-4
+          .body-2.mb-3 로그인 없이 사용할 별명을 입력해주세요. 문서 작성자·수정 이력에 이 별명이 표시됩니다.
+          v-alert.mb-3(v-if='nicknameError', type='error', dense, text, outlined) {{ nicknameError }}
+          v-text-field(
+            v-model='nicknameName'
+            label='별명'
+            outlined
+            dense
+            counter='30'
+            maxlength='30'
+            prepend-inner-icon='mdi-account-outline'
+            autofocus
+            hide-details='auto'
+            :disabled='nicknameLoading'
+            @keydown.enter='nicknameSubmit'
+          )
+          .caption.grey--text.mt-2(v-if='nicknameIp') 접속 IP: {{ nicknameIp }} — 별명은 이 IP에 저장되어 다음부터 자동으로 적용됩니다.
+        v-card-actions.pb-2.px-4
+          v-btn.flex-grow-1(
+            color='primary'
+            large
+            @click='nicknameSubmit'
+            :loading='nicknameLoading'
+            depressed
+          )
+            v-icon(left) mdi-check
+            span 시작하기
+        .text-center.pb-4
+          v-btn(text, small, color='grey', @click='loginMode = "account"')
+            v-icon(left, small) mdi-shield-account-outline
+            span 관리자 로그인
+      v-card.ldap-login-card(v-else)
         v-card-title.justify-center.pt-5.pb-3
           v-icon.mr-2(color='primary', size='28') {{ loginStrategy.moduleKey === 'ldap' ? 'mdi-account-lock' : 'mdi-login-variant' }}
           span.primary--text {{ loginStrategy.moduleKey === 'ldap' ? '로그인 LDAP(ID/PW)' : (loginStrategy.displayName || '로그인') }}
@@ -453,6 +490,10 @@
           )
             v-icon(left) mdi-login
             span 로그인
+        .text-center.pb-4
+          v-btn(text, small, color='grey', @click='loginMode = "nickname"')
+            v-icon(left, small) mdi-arrow-left
+            span 별명으로 사용하기
     loader(v-model='editLoading', title='편집 화면 불러오는 중...' subtitle='잠시만 기다려 주세요.')
     v-overlay(v-model='downloadLoading', z-index='210', opacity='0.75')
       .text-center
@@ -630,6 +671,11 @@ export default {
       editLoading: false,
       downloadLoading: false,
       loginDialog: false,
+      loginMode: 'nickname',
+      nicknameName: '',
+      nicknameIp: '',
+      nicknameLoading: false,
+      nicknameError: '',
       loginUsername: '',
       loginPassword: '',
       loginHidePassword: true,
@@ -760,6 +806,7 @@ export default {
   mounted () {
     if (!this.isAuthenticated) {
       this.loginDialog = true
+      this.fetchNicknameInfo()
       this.fetchLoginStrategy()
     }
 
@@ -1085,6 +1132,43 @@ export default {
         } : { key: null, moduleKey: null, usernameType: null, displayName: '' }
       } catch (err) {
         this.loginStrategy = { key: null, moduleKey: null, usernameType: null, displayName: '' }
+      }
+    },
+    async fetchNicknameInfo () {
+      try {
+        const resp = await fetch('/_nickname', { credentials: 'same-origin', cache: 'no-store' })
+        const data = await resp.json()
+        this.nicknameIp = data.ip || ''
+      } catch (err) {
+        this.nicknameIp = ''
+      }
+    },
+    async nicknameSubmit () {
+      this.nicknameError = ''
+      const name = (this.nicknameName || '').trim()
+      if (!name) {
+        this.nicknameError = '별명을 입력해주세요.'
+        return
+      }
+      this.nicknameLoading = true
+      try {
+        const resp = await fetch('/_nickname', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        })
+        const data = await resp.json()
+        if (resp.ok && data.ok) {
+          Cookies.set('jwt', data.jwt, { expires: 365, secure: window.location.protocol === 'https:' })
+          window.location.reload()
+        } else {
+          this.nicknameError = data.message || '별명 등록에 실패했습니다.'
+          this.nicknameLoading = false
+        }
+      } catch (err) {
+        this.nicknameError = err.message || '별명 등록 중 오류가 발생했습니다.'
+        this.nicknameLoading = false
       }
     },
     async loginSubmit () {

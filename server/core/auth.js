@@ -10,6 +10,7 @@ const randomBytesAsync = require('util').promisify(crypto.randomBytes)
 
 const commonHelper = require('../helpers/common')
 const securityHelper = require('../helpers/security')
+const nicknameHelper = require('../helpers/nickname')
 
 /* global WIKI */
 
@@ -115,6 +116,11 @@ module.exports = {
       if (err) { return next() }
       let mustRevalidate = false
 
+      // 다른 IP의 별명 계정 토큰이면 무시 -> 아래에서 현재 IP 기준으로 다시 판단 (별명은 IP 단위)
+      if (user && !user.api && nicknameHelper.isForeignNicknameToken(user.email, req)) {
+        user = null
+      }
+
       // Expired but still valid within N days, just renew
       if (info instanceof Error && info.name === 'TokenExpiredError') {
         const expiredDate = (info.expiredAt instanceof Date) ? info.expiredAt.toISOString() : info.expiredAt
@@ -144,6 +150,13 @@ module.exports = {
       // Revalidate and renew token
       if (mustRevalidate) {
         const jwtPayload = jwt.decode(securityHelper.extractJWT(req))
+        if (jwtPayload && nicknameHelper.isForeignNicknameToken(jwtPayload.email, req)) {
+          mustRevalidate = false
+          user = null
+        }
+      }
+      if (mustRevalidate) {
+        const jwtPayload = jwt.decode(securityHelper.extractJWT(req))
         try {
           const newToken = await WIKI.models.users.refreshToken(jwtPayload.id)
           user = newToken.user
@@ -163,6 +176,22 @@ module.exports = {
         } catch (errc) {
           WIKI.logger.warn(errc)
           return next()
+        }
+      }
+
+      // JWT is NOT valid -> 이 IP에 별명이 등록돼 있으면 자동 로그인 (로그인/로그아웃 화면 제외)
+      if (!user && !/^\/(login|logout)(\/|$)/.test(req.path)) {
+        try {
+          const ipUserId = await nicknameHelper.findUserIdByIp(req.ip)
+          if (ipUserId) {
+            const issued = await nicknameHelper.issueToken(ipUserId, req, res)
+            return req.logIn(issued.user, { session: false }, (errc) => {
+              if (errc) { return next(errc) }
+              next()
+            })
+          }
+        } catch (errn) {
+          WIKI.logger.warn(`Nickname auto-login failed: ${errn.message}`)
         }
       }
 

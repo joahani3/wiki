@@ -18,6 +18,18 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-11-14] feat: 로그인 없이 별명(IP 단위)만 입력해 쓰기/수정 가능하도록 변경
+
+- **이유**: 로그인 계정 없이도 문서를 작성/수정할 수 있게 해달라는 요청. 대신 누가 썼는지는 남아야 하므로 별명을 받아 작성자로 표시하고, 별명은 접속 IP 단위로 저장해 같은 PC에서는 다시 묻지 않도록 함
+- **위치**: `server/helpers/nickname.js`(신규), `server/core/auth.js`, `server/controllers/auth.js`, `client/themes/default/components/page.vue`
+- **내용**:
+  - IP 하나당 Wiki.js 로컬 사용자 1개를 자동 생성(이메일 `ip-<IP>@nickname.local`, 이름 = 별명, 비밀번호는 임의값). 별명이 사용자 `name`이라 문서 작성자/이력/댓글에 그대로 표시됨
+  - 권한은 `별명 사용자` 그룹(없으면 자동 생성)으로 부여: 읽기 + `write:pages`/`write:assets`/`write:comments` + 이력/소스 보기. 삭제·이동(`delete:pages`/`manage:pages`)은 제외. 생성 후에는 관리자 화면(관리 > 그룹)에서 조정 가능하며 코드가 덮어쓰지 않음
+  - `core/auth.js` 인증 미들웨어: JWT가 없거나 무효면 요청 IP의 별명 계정을 찾아 JWT를 발급해 자동 로그인(`/login`, `/logout` 경로는 제외 - 관리자 로그인 가능하도록). 다른 IP의 별명 계정 JWT(DHCP로 IP 변경 등)는 무시하고 현재 IP 기준으로 재판단. IP→계정 조회는 30초 메모리 캐시
+  - `GET /_nickname`(현재 IP/별명 조회), `POST /_nickname`(별명 등록·변경 + JWT 발급) 추가. 별명은 1~30자, 꺾쇠·따옴표·백틱·역슬래시 금지, 다른 사람과 중복 불가
+  - 비로그인 팝업(`page.vue`)을 별명 입력 팝업으로 교체(감지된 접속 IP 표시). 기존 로그인 폼은 팝업 하단 '관리자 로그인'으로 전환해 사용
+  - 서버는 `req.ip`를 쓰므로 실제 접속자 IP가 컨테이너까지 전달돼야 함 - netsh portproxy(NAT) 배포에서는 전원이 같은 IP로 보임. 배포 쪽(wikijs 저장소 `deploy/offline-wsl`)을 WSL mirrored 네트워킹으로 변경
+
 ### [2026-11-12] fix: /login 접속 시 "Cannot read properties of undefined (reading 'key')" 전체 화면 에러 수정
 
 - **이유**: `/login` 페이지 접속 시 정상 로그인 화면 대신 `Cannot read properties of undefined (reading 'key')` 에러 문구가 화면 전체에 표시됨. 원인은 `server/controllers/auth.js`의 GET `/login` 핸들러에서 "자동 로그인(싱글 전략 바이패스)" 설정(`WIKI.config.auth.autoLogin`)이 켜져 있을 때, `WIKI.models.authentication.query().orderBy('order').first()`로 활성 인증 전략 1건을 가져온 뒤 바로 `stg.strategyKey`/`stg.key`를 참조하는데, 쿼리 결과가 비어 `stg`가 `undefined`일 경우(인증 전략이 하나도 없거나 조회 조건에 안 걸리는 상태) 그대로 예외가 던져짐. 이 예외가 Express 에러 핸들러(`server/master.js`)로 넘어가 `err.message`를 그대로 렌더링하는 에러 페이지(`error.pug`)로 표시되어 사용자에게는 "화면 전체에 에러 문구"로 보임

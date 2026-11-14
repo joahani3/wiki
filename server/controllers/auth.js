@@ -6,6 +6,7 @@ const BruteKnex = require('../helpers/brute-knex')
 const router = express.Router()
 const _ = require('lodash')
 const commonHelper = require('../helpers/common')
+const nicknameHelper = require('../helpers/nickname')
 
 const bruteforce = new ExpressBrute(new BruteKnex({
   createTable: true,
@@ -16,6 +17,30 @@ const bruteforce = new ExpressBrute(new BruteKnex({
   maxWait: 60 * 60 * 1000, // 1 hour
   failCallback: (req, res, next) => {
     res.status(401).send('Too many failed attempts. Try again later.')
+  }
+})
+
+/**
+ * 별명(IP 단위) 조회 / 등록·변경 - 로그인 없이 쓰기/수정 권한 부여
+ * (server/helpers/nickname.js 참고)
+ */
+router.get('/_nickname', (req, res) => {
+  const isNicknameUser = req.user && nicknameHelper.isNicknameEmail(req.user.email)
+  res.set('Cache-Control', 'no-store')
+  res.json({
+    ip: nicknameHelper.normalizeIp(req.ip),
+    name: isNicknameUser ? req.user.name : null
+  })
+})
+
+router.post('/_nickname', async (req, res) => {
+  try {
+    const userId = await nicknameHelper.setNickname(req.ip, _.get(req, 'body.name', ''))
+    const issued = await nicknameHelper.issueToken(userId, req, res)
+    res.json({ ok: true, name: issued.user.name, jwt: issued.token })
+  } catch (err) {
+    WIKI.logger.warn(`Nickname set failed (${req.ip}): ${err.message}`)
+    res.status(400).json({ ok: false, message: err.message })
   }
 })
 
