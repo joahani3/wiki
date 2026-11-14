@@ -31,6 +31,21 @@ module.exports = {
   GROUP_NAME,
 
   /**
+   * 요청의 실제 접속자 IP.
+   * 환경변수 NICKNAME_TRUST_XFF=1 이면 앞단 리버스 프록시(폐쇄망 배포의 Windows nginx)가 넣어준
+   * X-Forwarded-For 첫 값을 쓴다. 이 경우 Wiki 포트는 프록시를 통해서만 접근 가능해야 하고,
+   * 프록시는 클라이언트가 보낸 X-Forwarded-For를 덮어써야 한다(위조 방지 - nginx.conf 참고).
+   * 그 외에는 req.ip (express 'trust proxy' 설정을 따름).
+   */
+  clientIp (req) {
+    if (process.env.NICKNAME_TRUST_XFF === '1') {
+      const xff = _.toString(req.get('x-forwarded-for')).split(',')[0].trim()
+      if (xff) { return this.normalizeIp(xff) }
+    }
+    return this.normalizeIp(req.ip)
+  },
+
+  /**
    * '::ffff:192.168.0.10' -> '192.168.0.10', '::1' -> '127.0.0.1'
    */
   normalizeIp (ip) {
@@ -53,7 +68,7 @@ module.exports = {
    * 이 요청의 IP에 해당하는 별명 계정이 아닌 별명 계정 JWT인가? (DHCP로 IP가 바뀐 경우 등)
    */
   isForeignNicknameToken (email, req) {
-    return this.isNicknameEmail(email) && email !== this.ipToEmail(req.ip)
+    return this.isNicknameEmail(email) && email !== this.ipToEmail(this.clientIp(req))
   },
 
   clearCache (ip) {

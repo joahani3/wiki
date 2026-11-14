@@ -18,6 +18,12 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-11-14] feat: 별명 IP 판별에 리버스 프록시 X-Forwarded-For 지원 (NICKNAME_TRUST_XFF)
+
+- **이유**: 폐쇄망 PC는 Windows 내장(구버전) WSL이라 mirrored 네트워킹을 쓸 수 없어, 접속자 실제 IP를 Wiki까지 전달하려면 Windows 쪽 리버스 프록시(nginx)가 필요함. 이때 Wiki가 보는 소켓 주소는 프록시 주소이므로 X-Forwarded-For를 읽어야 함
+- **위치**: `server/helpers/nickname.js`, `server/core/auth.js`, `server/controllers/auth.js`
+- **내용**: `clientIp(req)` 추가 - 환경변수 `NICKNAME_TRUST_XFF=1`이면 X-Forwarded-For 첫 값, 아니면 `req.ip`. 별명 관련 IP 판별(자동 로그인, 다른 IP 토큰 무시, `/_nickname` 조회·등록)을 모두 이 함수로 통일. 기본값은 꺼짐이라 프록시 없는 환경은 동작 변화 없음(헤더 위조 방지). 테스트: nginx 경유 Windows/WSL 두 출발지가 각각 다른 IP·별명 계정으로 구분되고, 위조한 `X-Forwarded-For: 9.9.9.9`는 무시됨
+
 ### [2026-11-14] feat: 로그인 없이 별명(IP 단위)만 입력해 쓰기/수정 가능하도록 변경
 
 - **이유**: 로그인 계정 없이도 문서를 작성/수정할 수 있게 해달라는 요청. 대신 누가 썼는지는 남아야 하므로 별명을 받아 작성자로 표시하고, 별명은 접속 IP 단위로 저장해 같은 PC에서는 다시 묻지 않도록 함

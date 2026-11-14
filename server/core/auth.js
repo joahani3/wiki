@@ -182,7 +182,7 @@ module.exports = {
       // JWT is NOT valid -> 이 IP에 별명이 등록돼 있으면 자동 로그인 (로그인/로그아웃 화면 제외)
       if (!user && !/^\/(login|logout)(\/|$)/.test(req.path)) {
         try {
-          const ipUserId = await nicknameHelper.findUserIdByIp(req.ip)
+          const ipUserId = await nicknameHelper.findUserIdByIp(nicknameHelper.clientIp(req))
           if (ipUserId) {
             const issued = await nicknameHelper.issueToken(ipUserId, req, res)
             return req.logIn(issued.user, { session: false }, (errc) => {

@@ -28,18 +28,18 @@ router.get('/_nickname', (req, res) => {
   const isNicknameUser = req.user && nicknameHelper.isNicknameEmail(req.user.email)
   res.set('Cache-Control', 'no-store')
   res.json({
-    ip: nicknameHelper.normalizeIp(req.ip),
+    ip: nicknameHelper.clientIp(req),
     name: isNicknameUser ? req.user.name : null
   })
 })
 
 router.post('/_nickname', async (req, res) => {
   try {
-    const userId = await nicknameHelper.setNickname(req.ip, _.get(req, 'body.name', ''))
+    const userId = await nicknameHelper.setNickname(nicknameHelper.clientIp(req), _.get(req, 'body.name', ''))
     const issued = await nicknameHelper.issueToken(userId, req, res)
     res.json({ ok: true, name: issued.user.name, jwt: issued.token })
   } catch (err) {
-    WIKI.logger.warn(`Nickname set failed (${req.ip}): ${err.message}`)
+    WIKI.logger.warn(`Nickname set failed (${nicknameHelper.clientIp(req)}): ${err.message}`)
     res.status(400).json({ ok: false, message: err.message })
   }
 })
