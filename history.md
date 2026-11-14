@@ -18,6 +18,12 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-11-12] fix: /login 접속 시 "Cannot read properties of undefined (reading 'key')" 전체 화면 에러 수정
+
+- **이유**: `/login` 페이지 접속 시 정상 로그인 화면 대신 `Cannot read properties of undefined (reading 'key')` 에러 문구가 화면 전체에 표시됨. 원인은 `server/controllers/auth.js`의 GET `/login` 핸들러에서 "자동 로그인(싱글 전략 바이패스)" 설정(`WIKI.config.auth.autoLogin`)이 켜져 있을 때, `WIKI.models.authentication.query().orderBy('order').first()`로 활성 인증 전략 1건을 가져온 뒤 바로 `stg.strategyKey`/`stg.key`를 참조하는데, 쿼리 결과가 비어 `stg`가 `undefined`일 경우(인증 전략이 하나도 없거나 조회 조건에 안 걸리는 상태) 그대로 예외가 던져짐. 이 예외가 Express 에러 핸들러(`server/master.js`)로 넘어가 `err.message`를 그대로 렌더링하는 에러 페이지(`error.pug`)로 표시되어 사용자에게는 "화면 전체에 에러 문구"로 보임
+- **위치**: `server/controllers/auth.js` (GET `/login` 핸들러)
+- **내용**: `stg`가 없으면 `stgInfo` 조회를 건너뛰고(`stg ? _.find(...) : null`), `stg && stgInfo && !stgInfo.useForm`으로 널 체크를 추가해 바이패스 조건이 안전하게 false로 떨어지도록 수정. 전략을 못 찾으면 자동 로그인을 건너뛰고 정상적으로 `/login` 화면을 렌더링함
+
 ### [2026-09-02] fix: 문서 보기 화면 로그인 팝업에서 로그인 실패하는 문제 수정 및 1순위 인증전략에 맞춰 폼 전환
 
 - **이유**: 비로그인 사용자에게 뜨는 로그인 팝업(`page.vue`)이 로그인 뮤테이션에 항상 `strategy: 'ldap'`을 하드코딩해서 보내 로그인 시도가 항상 실패했음. `/login` 페이지(`client/components/login.vue`)는 `authentication.activeStrategies` 쿼리로 얻은 전략 인스턴스의 실제 `key`를 사용하는데, 관리자 화면에서 인증 전략을 추가하면 그 `key`는 `uuid()`로 발급되고(`client/components/admin/admin-auth.vue`) 전략 타입 문자열('ldap')과 다름 - 서버(`server/models/users.js`의 `login()`)가 `WIKI.auth.strategies[opts.strategy]`를 찾지 못해 `AuthProviderInvalid`로 실패. 또한 팝업이 LDAP 폼으로 고정돼 있어, 사이트 설정상 1순위(order) 인증전략이 로컬(일반) 로그인인 경우에도 LDAP 폼이 떠서 실제 로그인 방식과 안 맞는 문제도 있었음
