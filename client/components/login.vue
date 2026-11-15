@@ -312,7 +312,9 @@ export default {
     filteredStrategies () {
       const qParams = new URLSearchParams(window.location.search)
       if (!this.showLocal && !qParams.has('all')) {
-        return _.reject(this.strategies, ['key', 'local'])
+        const others = _.reject(this.strategies, ['key', 'local'])
+        // 로컬 말고 다른 로그인 방식(LDAP 등)이 없으면 숨기지 않음 - 숨기면 로그인 수단이 없어 화면이 빈다
+        if (others.length > 0) { return others }
       }
       return this.strategies
     },
@@ -322,7 +324,8 @@ export default {
   },
   watch: {
     filteredStrategies (newValue, oldValue) {
-      if (_.head(newValue).strategy.useForm) {
+      const first = _.head(newValue)
+      if (first && first.strategy && first.strategy.useForm) {
         this.selectedStrategyKey = _.head(newValue).key
       }
     },

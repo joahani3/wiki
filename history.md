@@ -18,6 +18,12 @@ Fork: https://github.com/joahani3/wiki
 
 <!-- 이후 커밋마다 아래에 추가 -->
 
+### [2026-11-15] fix: 로그인 방식이 로컬뿐일 때 /login 빈 화면
+
+- **이유**: 설치 직후(로컬 로그인만 있음) /login이 로그인 폼 없이 빈 화면. LDAP용 "로컬 로그인 숨김" 커스텀이 로컬을 빼면 로그인 방식이 0개가 되어 `_.head(...)`가 undefined → TypeError
+- **위치**: `client/components/login.vue`
+- **내용**: 로컬 외 로그인 방식이 없으면 숨기지 않고 로컬 표시, watcher에 빈 목록 방어 추가
+
 ### [2026-11-14] feat: 별명 IP 판별에 리버스 프록시 X-Forwarded-For 지원 (NICKNAME_TRUST_XFF)
 
 - **이유**: 폐쇄망 PC는 Windows 내장(구버전) WSL이라 mirrored 네트워킹을 쓸 수 없어, 접속자 실제 IP를 Wiki까지 전달하려면 Windows 쪽 리버스 프록시(nginx)가 필요함. 이때 Wiki가 보는 소켓 주소는 프록시 주소이므로 X-Forwarded-For를 읽어야 함
