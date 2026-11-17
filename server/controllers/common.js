@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const pageHelper = require('../helpers/page')
+const assetHelper = require('../helpers/asset')
 const _ = require('lodash')
 const CleanCSS = require('clean-css')
 const moment = require('moment')
@@ -475,7 +476,18 @@ router.delete('/_userav', async (req, res, next) => {
 router.get('/*', async (req, res, next) => {
   const stripExt = _.some(WIKI.config.pageExtensions, ext => _.endsWith(req.path, `.${ext}`))
   const pageArgs = pageHelper.parsePath(req.path, { stripExt })
-  const isPage = (stripExt || pageArgs.path.indexOf('.') === -1)
+  let isPage = (stripExt || pageArgs.path.indexOf('.') === -1)
+
+  // .txt/.md/.html 주소는 원래 페이지로만 해석돼, 같은 이름으로 업로드한 첨부(예: 문서 업로드의
+  // 원본 '인사_규정.txt')를 내려받을 수 없었다 - 그 이름의 첨부가 실제로 있으면 첨부로 응답
+  if (stripExt) {
+    const assetArgs = pageHelper.parsePath(req.path, { stripExt: false })
+    const hasAsset = await WIKI.models.assets.query().select('id').where('hash', assetHelper.generateHash(assetArgs.path)).first()
+    if (hasAsset) {
+      isPage = false
+      Object.assign(pageArgs, assetArgs)
+    }
+  }
 
   if (isPage) {
     if (WIKI.config.lang.namespacing && !pageArgs.explicitLocale) {

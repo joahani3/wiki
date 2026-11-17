@@ -4,7 +4,7 @@ const os = require('os')
 const { execFile } = require('child_process')
 const { promisify } = require('util')
 const _ = require('lodash')
-const sanitize = require('sanitize-filename')
+const assetHelper = require('./asset')
 
 const execFileAsync = promisify(execFile)
 
@@ -142,8 +142,7 @@ async function convertPdfToHtml ({ buffer, originalName, user, onProgress }) {
   const pdfPath = path.join(tmpDir, 'input.pdf')
   await fs.writeFile(pdfPath, buffer)
 
-  const assetBaseName = sanitize(path.basename(originalName, path.extname(originalName)))
-    .toLowerCase().replace(/[\s,;#]+/g, '_') || 'document'
+  const assetBaseName = assetHelper.toAssetFilename(path.basename(originalName, path.extname(originalName))) || 'document'
 
   // 페이지 스크린샷을 자산으로 저장해야 하므로 미리 권한을 확인 (실패 시 조용히 이미지만 빠지는 대신 명확히 에러)
   if (!WIKI.auth.checkAccess(user, ['write:assets'], { path: `${assetBaseName}-p1.png` })) {

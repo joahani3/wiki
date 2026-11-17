@@ -76,7 +76,7 @@ module.exports = {
      */
     async renameAsset(obj, args, context) {
       try {
-        const filename = sanitize(args.filename).toLowerCase()
+        const filename = assetHelper.toAssetFilename(args.filename)
 
         const asset = await WIKI.models.assets.query().findById(args.id)
         if (asset) {

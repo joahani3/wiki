@@ -102,7 +102,7 @@ router.post('/u', (req, res, next) => {
   }
 
   // Sanitize filename
-  fileMeta.originalname = sanitize(fileMeta.originalname.toLowerCase().replace(/[\s,;#]+/g, '_'))
+  fileMeta.originalname = assetHelper.toAssetFilename(fileMeta.originalname)
 
   // 동일 폴더에 같은 이름이 있으면 _1, _2, ... 를 붙여 중복 방지
   const folderPrefix = folderId ? hierarchy.map(h => h.slug).join('/') : null
@@ -194,8 +194,10 @@ const DOC_UPLOAD_MAX_SIZE = 50 * 1024 * 1024 // 50MB
 // 변환 품질에 한계가 있을 수 있어(hwp/doc 등 텍스트만 추출, PDF 표 미복원 등)
 // 사용자가 언제든 원본을 내려받을 수 있게 함
 async function uploadOriginalDocument ({ buffer, originalName, mimetype, user }) {
+  // 저장 이름은 공백 -> _ 등 일반 첨부와 같은 규칙 (원래 이름은 링크 표시/다운로드 이름으로만 사용)
+  const storedName = assetHelper.toAssetFilename(originalName) || `document${path.extname(originalName).toLowerCase()}`
   // 동일 이름 파일이 이미 있으면 _1, _2, ... 를 붙여 중복 방지
-  const { filename: uniqueName, assetPath } = await getUniqueAssetName(originalName, null, null)
+  const { filename: uniqueName, assetPath } = await getUniqueAssetName(storedName, null, null)
 
   if (!WIKI.auth.checkAccess(user, ['write:assets'], { path: assetPath })) {
     throw new Error('원본 파일을 저장할 권한이 없습니다.')
